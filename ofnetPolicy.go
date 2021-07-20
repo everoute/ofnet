@@ -241,19 +241,23 @@ func (self *PolicyAgent) AddRuleToTier(rule *OfnetPolicyRule, direction uint8, t
 	}
 	// Install the rule in policy table
 	ruleFlow, err := policyTable.NewFlow(ofctrl.FlowMatch{
-		Priority:     uint16(FLOW_POLICY_PRIORITY_OFFSET + rule.Priority),
-		Ethertype:    0x0800,
-		IpDa:         ipDa,
-		IpDaMask:     ipDaMask,
-		IpSa:         ipSa,
-		IpSaMask:     ipSaMask,
-		IpProto:      rule.IpProtocol,
-		TcpSrcPort:   rule.SrcPort,
-		TcpDstPort:   rule.DstPort,
-		UdpSrcPort:   rule.SrcPort,
-		UdpDstPort:   rule.DstPort,
-		TcpFlags:     flagPtr,
-		TcpFlagsMask: flagMaskPtr,
+		Priority:       uint16(FLOW_POLICY_PRIORITY_OFFSET + rule.Priority),
+		Ethertype:      0x0800,
+		IpDa:           ipDa,
+		IpDaMask:       ipDaMask,
+		IpSa:           ipSa,
+		IpSaMask:       ipSaMask,
+		IpProto:        rule.IpProtocol,
+		TcpSrcPort:     rule.SrcPort,
+		TcpDstPort:     rule.DstPort,
+		TcpSrcPortMask: rule.SrcPortMask,
+		TcpDstPortMask: rule.DstPortMask,
+		UdpSrcPort:     rule.SrcPort,
+		UdpDstPort:     rule.DstPort,
+		UdpSrcPortMask: rule.SrcPortMask,
+		UdpDstPortMask: rule.DstPortMask,
+		TcpFlags:       flagPtr,
+		TcpFlagsMask:   flagMaskPtr,
 	})
 	if err != nil {
 		log.Errorf("Error adding flow for rule {%v}. Err: %v", rule, err)

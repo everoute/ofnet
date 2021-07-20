@@ -17,6 +17,7 @@ package ofctrl
 // This file implements the forwarding graph API for the flow
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"net"
@@ -28,34 +29,38 @@ import (
 
 // Small subset of openflow fields we currently support
 type FlowMatch struct {
-	Priority     uint16            // Priority of the flow
-	InputPort    uint32            // Input port number
-	MacDa        *net.HardwareAddr // Mac dest
-	MacDaMask    *net.HardwareAddr // Mac dest mask
-	MacSa        *net.HardwareAddr // Mac source
-	MacSaMask    *net.HardwareAddr // Mac source mask
-	Ethertype    uint16            // Ethertype
-	VlanId       uint16            // vlan id
-	ArpOper      uint16            // ARP Oper type
-	IpSa         *net.IP           // IPv4 source addr
-	IpSaMask     *net.IP           // IPv4 source mask
-	IpDa         *net.IP           // IPv4 dest addr
-	IpDaMask     *net.IP           // IPv4 dest mask
-	Ipv6Sa       *net.IP           // IPv6 source addr
-	Ipv6SaMask   *net.IP           // IPv6 source mask
-	Ipv6Da       *net.IP           // IPv6 dest addr
-	Ipv6DaMask   *net.IP           // IPv6 dest mask
-	IpProto      uint8             // IP protocol
-	IpDscp       uint8             // DSCP/TOS field
-	TcpSrcPort   uint16            // TCP source port
-	TcpDstPort   uint16            // TCP dest port
-	UdpSrcPort   uint16            // UDP source port
-	UdpDstPort   uint16            // UDP dest port
-	Metadata     *uint64           // OVS metadata
-	MetadataMask *uint64           // Metadata mask
-	TunnelId     uint64            // Vxlan Tunnel id i.e. VNI
-	TcpFlags     *uint16           // TCP flags
-	TcpFlagsMask *uint16           // Mask for TCP flags
+	Priority       uint16            // Priority of the flow
+	InputPort      uint32            // Input port number
+	MacDa          *net.HardwareAddr // Mac dest
+	MacDaMask      *net.HardwareAddr // Mac dest mask
+	MacSa          *net.HardwareAddr // Mac source
+	MacSaMask      *net.HardwareAddr // Mac source mask
+	Ethertype      uint16            // Ethertype
+	VlanId         uint16            // vlan id
+	ArpOper        uint16            // ARP Oper type
+	IpSa           *net.IP           // IPv4 source addr
+	IpSaMask       *net.IP           // IPv4 source mask
+	IpDa           *net.IP           // IPv4 dest addr
+	IpDaMask       *net.IP           // IPv4 dest mask
+	Ipv6Sa         *net.IP           // IPv6 source addr
+	Ipv6SaMask     *net.IP           // IPv6 source mask
+	Ipv6Da         *net.IP           // IPv6 dest addr
+	Ipv6DaMask     *net.IP           // IPv6 dest mask
+	IpProto        uint8             // IP protocol
+	IpDscp         uint8             // DSCP/TOS field
+	TcpSrcPort     uint16            // TCP source port
+	TcpSrcPortMask uint16            // TCP source port mask
+	TcpDstPort     uint16            // TCP dest port
+	TcpDstPortMask uint16            // TCP dest port mask
+	UdpSrcPort     uint16            // UDP source port
+	UdpSrcPortMask uint16            // UDP source port mask
+	UdpDstPort     uint16            // UDP dest port
+	UdpDstPortMask uint16            // UDP dest port mask
+	Metadata       *uint64           // OVS metadata
+	MetadataMask   *uint64           // Metadata mask
+	TunnelId       uint64            // Vxlan Tunnel id i.e. VNI
+	TcpFlags       *uint16           // TCP flags
+	TcpFlagsMask   *uint16           // Mask for TCP flags
 
 	CtStates *openflow13.CTStates
 }
@@ -149,6 +154,22 @@ func (self *Flow) Type() string {
 func (self *Flow) GetFlowInstr() openflow13.Instruction {
 	log.Fatalf("Unexpected call to get flow's instruction set")
 	return nil
+}
+
+func AddPortMask(field *openflow13.MatchField, portMask uint16) {
+	if portMask != 0xffff && portMask != 0x0000 {
+		mask := new(openflow13.PortField)
+		b := make([]byte, 16)
+		binary.BigEndian.PutUint16(b, portMask)
+		err := mask.UnmarshalBinary(b)
+		if err != nil {
+			log.Fatalf("Error addPortMask, wrong portMask:%x, err:%s.", portMask, err)
+		}
+
+		field.Mask = mask
+		field.HasMask = true
+		field.Length += uint8(mask.Len())
+	}
 }
 
 // Translate our match fields into openflow 1.3 match fields
@@ -260,18 +281,22 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	// Handle port numbers
 	if self.Match.IpProto == IP_PROTO_TCP && self.Match.TcpSrcPort != 0 {
 		portField := openflow13.NewTcpSrcField(self.Match.TcpSrcPort)
+		AddPortMask(portField, self.Match.TcpSrcPortMask)
 		ofMatch.AddField(*portField)
 	}
 	if self.Match.IpProto == IP_PROTO_TCP && self.Match.TcpDstPort != 0 {
 		portField := openflow13.NewTcpDstField(self.Match.TcpDstPort)
+		AddPortMask(portField, self.Match.TcpDstPortMask)
 		ofMatch.AddField(*portField)
 	}
 	if self.Match.IpProto == IP_PROTO_UDP && self.Match.UdpSrcPort != 0 {
 		portField := openflow13.NewUdpSrcField(self.Match.UdpSrcPort)
+		AddPortMask(portField, self.Match.UdpSrcPortMask)
 		ofMatch.AddField(*portField)
 	}
 	if self.Match.IpProto == IP_PROTO_UDP && self.Match.UdpDstPort != 0 {
 		portField := openflow13.NewUdpDstField(self.Match.UdpDstPort)
+		AddPortMask(portField, self.Match.UdpDstPortMask)
 		ofMatch.AddField(*portField)
 	}
 
