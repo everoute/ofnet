@@ -309,6 +309,24 @@ func buildOVSDBMapFromMap(data map[string]string) []interface{} {
 	}
 }
 
+func (self *OvsDriver) UpdateInterface(ifaceName string, externalIDs map[string]string) error {
+	if externalIDs == nil {
+		externalIDs = make(map[string]string)
+	}
+	ovsExternalIDs, _ := libovsdb.NewOvsMap(externalIDs)
+
+	portOperation := libovsdb.Operation{
+		Op:    "update",
+		Table: "Interface",
+		Row: map[string]interface{}{
+			"external_ids": ovsExternalIDs,
+		},
+		Where: []interface{}{[]interface{}{"name", "==", ifaceName}},
+	}
+
+	return self.ovsdbTransact([]libovsdb.Operation{portOperation})
+}
+
 // Create an internal port in OVS
 func (self *OvsDriver) CreatePort(intfName, intfType string, vlanTag uint) error {
 	portUuidStr := intfName
