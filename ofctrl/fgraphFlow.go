@@ -37,6 +37,7 @@ type FlowMatch struct {
 	MacSaMask      *net.HardwareAddr // Mac source mask
 	Ethertype      uint16            // Ethertype
 	VlanId         uint16            // vlan id
+	VlanIdMask     *uint16           // vlan id mask
 	ArpOper        uint16            // ARP Oper type
 	IpSa           *net.IP           // IPv4 source addr
 	IpSaMask       *net.IP           // IPv4 source mask
@@ -62,7 +63,17 @@ type FlowMatch struct {
 	TcpFlags       *uint16           // TCP flags
 	TcpFlagsMask   *uint16           // Mask for TCP flags
 
-	CtStates *openflow13.CTStates
+	CtStates    *openflow13.CTStates
+	PktMark     uint32 // NXM_NX_PKT_MARK field, in linux kernel, from skb_mark
+	PktMarkMask *uint32
+	Regs        []*NXRegister // NXM_NX_REGX[]
+}
+
+// NXM_NX_REGX (X in 0~15) register match field
+type NXRegister struct {
+	RegID int                 // register id
+	Data  uint32              // register data
+	Range *openflow13.NXRange // register range selection mask
 }
 
 // additional actions in flow's instruction set
@@ -77,7 +88,16 @@ type FlowAction struct {
 	metadataMask uint64           // Metadata mask
 	dscp         uint8            // DSCP field
 
-	conntrack *ConnTrackAction
+	conntrack      *ConnTrackAction
+	loadAction     *NXLoadAction // Load data into NXM fields
+	learnAction    *LearnAction  // flow learn action
+	resubmitAction *ResubmitAction
+	outputAction   *OutputAction
+}
+
+type OutputAction struct {
+	actionType string
+	outputPort uint32
 }
 
 type ConnTrackAction struct {
@@ -86,6 +106,249 @@ type ConnTrackAction struct {
 	Table   *uint8
 	Zone    *uint16
 	Actions []openflow13.Action
+}
+
+type ResubmitAction struct {
+	tableId uint8
+	inPort  uint16
+}
+
+type LearnAction struct {
+	idleTimeout    uint16
+	hardTimeout    uint16
+	priority       uint16
+	cookie         uint64
+	flags          uint16
+	tableID        uint8
+	pad            uint8
+	finIdleTimeout uint16
+	finHardTimeout uint16
+	specs          []*openflow13.NXLearnSpec
+	pad2           []byte
+}
+
+type LearnField struct {
+	Name  string
+	Start uint16
+}
+
+type NXLoadAction struct {
+	Field *openflow13.MatchField
+	Value uint64
+	Range *openflow13.NXRange
+}
+
+func (f *Flow) Output(outputAction *OutputAction) error {
+	action := new(FlowAction)
+	action.actionType = "outputAction"
+	action.outputAction = outputAction
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
+
+	return nil
+}
+
+func NewOutputAction(actionType string, outputPort uint32) *OutputAction {
+	outputAction := new(OutputAction)
+	outputAction.actionType = actionType
+	outputAction.outputPort = outputPort
+
+	return outputAction
+}
+
+func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
+	field, err := openflow13.FindFieldHeaderByName(fieldName, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &NXLoadAction{
+		Field: field,
+		Range: dataRange,
+		Value: data,
+	}, nil
+}
+
+func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow13.NXRange) error {
+	loadAct, err := NewNXLoadAction(fieldName, data, dataRange)
+	if err != nil {
+		return err
+	}
+	action := new(FlowAction)
+	action.actionType = "loadAction"
+	action.loadAction = loadAct
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
+	if f.isInstalled {
+		return f.install()
+	}
+
+	return nil
+}
+
+func NewResubmitAction(inPort *uint16, table *uint8) *ResubmitAction {
+	resubmit := new(ResubmitAction)
+	if inPort == nil {
+		resubmit.inPort = openflow13.OFPP_IN_PORT
+	} else {
+		resubmit.inPort = *inPort
+	}
+
+	if table == nil {
+		resubmit.tableId = openflow13.OFPTT_ALL
+	} else {
+		resubmit.tableId = *table
+	}
+
+	return resubmit
+}
+
+func (f *Flow) Resubmit(inPort *uint16, tableId *uint8) error {
+	action := new(FlowAction)
+	action.resubmitAction = NewResubmitAction(inPort, tableId)
+	action.actionType = "resubmitAction"
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
+	if f.isInstalled {
+		return f.install()
+	}
+
+	return nil
+}
+
+func NewLearnAction(tableId uint8, priority, idleTimeout, hardTimeout, finIdleTimeout, finHardTimeout uint16, cookieId uint64) *LearnAction {
+	return &LearnAction{
+		idleTimeout:    idleTimeout,
+		hardTimeout:    hardTimeout,
+		priority:       priority,
+		cookie:         cookieId,
+		tableID:        tableId,
+		finHardTimeout: finHardTimeout,
+		finIdleTimeout: finIdleTimeout,
+	}
+}
+
+func (l *LearnAction) AddLearnedLoadAction(learnDstField *LearnField, learnBitLen uint16, learnSrcField *LearnField, learnSrcValue []byte) error {
+	dstMatchField, err := openflow13.FindFieldHeaderByName(learnDstField.Name, true)
+	if err != nil {
+		return err
+	}
+	dstField := &openflow13.NXLearnSpecField{
+		Field: dstMatchField,
+		Ofs:   learnDstField.Start,
+	}
+
+	var learnSpec *openflow13.NXLearnSpec
+	if learnSrcValue != nil {
+		header := openflow13.NewLearnHeaderLoadFromValue(learnBitLen)
+		learnSpec = getLearnSpecWithValue(header, dstField, learnSrcValue)
+	} else {
+		header := openflow13.NewLearnHeaderLoadFromField(learnBitLen)
+		srcMatchField, err := openflow13.FindFieldHeaderByName(learnSrcField.Name, true)
+		if err != nil {
+			return err
+		}
+		srcField := &openflow13.NXLearnSpecField{
+			Field: srcMatchField,
+			Ofs:   learnSrcField.Start,
+		}
+		learnSpec = getLearnSpecWithField(header, dstField, srcField)
+	}
+
+	l.specs = append(l.specs, learnSpec)
+
+	return nil
+}
+
+func (l *LearnAction) AddLearnedOutputAction(learnSrcField *LearnField, learnBitLen uint16) error {
+	srcMatchField, err := openflow13.FindFieldHeaderByName(learnSrcField.Name, true)
+	if err != nil {
+		return err
+	}
+	srcField := &openflow13.NXLearnSpecField{
+		Field: srcMatchField,
+		Ofs:   learnSrcField.Start,
+	}
+	header := openflow13.NewLearnHeaderOutputFromField(learnBitLen)
+
+	learnSpec := &openflow13.NXLearnSpec{
+		Header:   header,
+		SrcField: srcField,
+	}
+
+	l.specs = append(l.specs, learnSpec)
+
+	return nil
+}
+
+func (l *LearnAction) AddLearnedMatch(learnDstField *LearnField, learnBitLen uint16, learnSrcField *LearnField, learnSrcValue []byte) error {
+	dstMatchField, err := openflow13.FindFieldHeaderByName(learnDstField.Name, true)
+	if err != nil {
+		return err
+	}
+
+	dstField := &openflow13.NXLearnSpecField{
+		Field: dstMatchField,
+		Ofs:   learnDstField.Start,
+	}
+
+	var learnSpec *openflow13.NXLearnSpec
+	if learnSrcValue != nil {
+		header := openflow13.NewLearnHeaderMatchFromValue(learnBitLen)
+		learnSpec = getLearnSpecWithValue(header, dstField, learnSrcValue)
+	} else {
+		header := openflow13.NewLearnHeaderMatchFromField(learnBitLen)
+		srcMatchField, err := openflow13.FindFieldHeaderByName(learnSrcField.Name, true)
+		if err != nil {
+			return err
+		}
+		srcField := &openflow13.NXLearnSpecField{
+			Field: srcMatchField,
+			Ofs:   learnSrcField.Start,
+		}
+		learnSpec = getLearnSpecWithField(header, dstField, srcField)
+	}
+
+	l.specs = append(l.specs, learnSpec)
+
+	return nil
+}
+
+func getLearnSpecWithValue(header *openflow13.NXLearnSpecHeader, dstField *openflow13.NXLearnSpecField, srcValue []byte) *openflow13.NXLearnSpec {
+	return &openflow13.NXLearnSpec{
+		Header:   header,
+		DstField: dstField,
+		SrcValue: srcValue,
+	}
+}
+
+func getLearnSpecWithField(header *openflow13.NXLearnSpecHeader, dstField *openflow13.NXLearnSpecField, srcField *openflow13.NXLearnSpecField) *openflow13.NXLearnSpec {
+	return &openflow13.NXLearnSpec{
+		Header:   header,
+		DstField: dstField,
+		SrcField: srcField,
+	}
+}
+
+func (f *Flow) Learn(learnAction *LearnAction) error {
+	action := new(FlowAction)
+	action.actionType = "learnAction"
+	action.learnAction = learnAction
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
+	if f.isInstalled {
+		return f.install()
+	}
+
+	return nil
 }
 
 func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16) *ConnTrackAction {
@@ -212,8 +475,8 @@ func (self *Flow) xlateMatch() openflow13.Match {
 
 	// Handle Vlan id
 	if self.Match.VlanId != 0 {
-		vidField := openflow13.NewVlanIdField(self.Match.VlanId, nil)
-		ofMatch.AddField(*vidField)
+		vlanIdField := openflow13.NewVlanIdField(self.Match.VlanId, self.Match.VlanIdMask)
+		ofMatch.AddField(*vlanIdField)
 	}
 
 	// Handle ARP Oper type
@@ -326,6 +589,27 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	if self.Match.CtStates != nil {
 		ctStateField := openflow13.NewCTStateMatchField(self.Match.CtStates)
 		ofMatch.AddField(*ctStateField)
+	}
+
+	// pkt_mark match
+	if self.Match.PktMark != 0 {
+		pktMarkField, _ := openflow13.FindFieldHeaderByName("NXM_NX_PKT_MARK", self.Match.PktMarkMask != nil)
+		pktMarkField.Value = &openflow13.Uint32Message{
+			Data: self.Match.PktMark,
+		}
+		if self.Match.PktMarkMask != nil {
+			pktMarkField.Mask = &openflow13.Uint32Message{
+				Data: *self.Match.PktMarkMask,
+			}
+		}
+		ofMatch.AddField(*pktMarkField)
+	}
+
+	if self.Match.Regs != nil {
+		for _, reg := range self.Match.Regs {
+			registerField := openflow13.NewRegMatchField(reg.RegID, reg.Data, reg.Range)
+			ofMatch.AddField(*registerField)
+		}
 	}
 
 	return *ofMatch
@@ -491,6 +775,56 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 			log.Debugf("flow install. Added setUDPDst Action: %+v", setUDPDstAction)
 
+		case "loadAction":
+			loadAct := flowAction.loadAction
+			ofsBits := loadAct.Range.ToOfsBits()
+			loadOfAction := openflow13.NewNXActionRegLoad(ofsBits, loadAct.Field, loadAct.Value)
+
+			actInstr.AddAction(loadOfAction, true)
+			addActn = true
+
+			log.Debugf("Add loadAct action: %v", loadOfAction)
+
+		case "learnAction":
+			learnAct := flowAction.learnAction
+			learnAction := openflow13.NewNXActionLearn()
+			learnAction.IdleTimeout = learnAct.idleTimeout
+			learnAction.HardTimeout = learnAct.hardTimeout
+			learnAction.Priority = learnAct.priority
+			learnAction.Cookie = learnAct.cookie
+			learnAction.Flags = learnAct.flags
+			learnAction.TableID = learnAct.tableID
+			learnAction.FinIdleTimeout = learnAct.finIdleTimeout
+			learnAction.FinHardTimeout = learnAct.finHardTimeout
+			learnAction.LearnSpecs = learnAct.specs
+
+			err := actInstr.AddAction(learnAction, true)
+			if err != nil {
+				return err
+			}
+			addActn = true
+
+			log.Debugf("Add learn action: %v", learnAction)
+
+		case "resubmitAction":
+			resubmitAct := flowAction.resubmitAction
+			err := actInstr.AddAction(openflow13.NewNXActionResubmitTableAction(resubmitAct.inPort, resubmitAct.tableId), false)
+			if err != nil {
+				return err
+			}
+			addActn = true
+
+			log.Debugf("Add resubmit action: %v", resubmitAct)
+
+		case "outputAction":
+			outputAct := flowAction.outputAction
+			err := actInstr.AddAction(openflow13.NewActionOutput(outputAct.outputPort), false)
+			if err != nil {
+				return err
+			}
+			addActn = true
+			log.Debugf("Add output Action: %v", outputAct)
+
 		default:
 			log.Fatalf("Unknown action type %s", flowAction.actionType)
 		}
@@ -556,6 +890,17 @@ func (self *Flow) install() error {
 
 			log.Debugf("flow install: added output port instr: %+v", instr)
 		}
+	case "empty":
+		instr := self.NextElem.GetFlowInstr()
+		if instr != nil {
+			self.installFlowActions(flowMod, instr)
+
+			if len(instr.(*openflow13.InstrActions).Actions) > 0 {
+				flowMod.AddInstruction(instr)
+			}
+		}
+
+		log.Debugf("flow install: added empty forwarding elem %v", instr)
 	default:
 		log.Fatalf("Unknown Fgraph element type %s", self.NextElem.Type())
 	}
