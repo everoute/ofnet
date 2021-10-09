@@ -187,3 +187,7 @@ func (c *Controller) Parse(b []byte) (message util.Message, err error) {
 	}
 	return
 }
+
+func (c *Controller) GetListenPort() int {
+	return c.listener.Addr().(*net.TCPAddr).Port
+}
