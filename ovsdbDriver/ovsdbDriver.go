@@ -74,6 +74,18 @@ func (d *OvsDriver) Delete() error {
 	return nil
 }
 
+func (d *OvsDriver) ReConnectOvsdb() error {
+	// connect to OVS
+	ovs, err := libovsdb.ConnectUnix("/var/run/openvswitch/db.sock")
+	if err != nil {
+		return fmt.Errorf("failed to connect to ovsdb. Err: %v", err)
+	}
+
+	d.ovsClient = ovs
+
+	return nil
+}
+
 // Populate local cache of ovs state
 func (self *OvsDriver) populateCache(updates libovsdb.TableUpdates) {
 	// lock the cache for write

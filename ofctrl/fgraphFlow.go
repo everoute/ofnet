@@ -398,7 +398,7 @@ const IP_PROTO_UDP = 17
 
 // string key for the flow
 // FIXME: simple json conversion for now. This needs to be smarter
-func (self *Flow) flowKey() string {
+func (self *Flow) FlowKey() string {
 	jsonVal, err := json.Marshal(self.Match)
 	if err != nil {
 		log.Errorf("Error forming flowkey for %+v. Err: %v", self, err)
@@ -1210,8 +1210,12 @@ func (self *Flow) Delete() error {
 	}
 
 	// Delete it from the table
-	flowKey := self.flowKey()
+	flowKey := self.FlowKey()
 	self.Table.DeleteFlow(flowKey)
 
 	return nil
+}
+
+func InstallFlow(flow *Flow) error {
+	return flow.install()
 }
