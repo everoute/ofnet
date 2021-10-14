@@ -247,6 +247,25 @@ func (self *OvsDriver) DeleteBridge(bridgeName string) error {
 	return self.ovsdbTransact(operations)
 }
 
+func (self *OvsDriver) UpdateBridge(attrMap map[string][]string) error {
+	var updateOperations []libovsdb.Operation
+	condition := libovsdb.NewCondition("name", "==", self.OvsBridgeName)
+	for attrName, list := range attrMap {
+		updateOperation := libovsdb.Operation{
+			Op:    "update",
+			Table: "Bridge",
+			Where: []interface{}{condition},
+			Row: map[string]interface{}{
+				attrName: makeOVSDBSetFromList(list),
+			},
+		}
+
+		updateOperations = append(updateOperations, updateOperation)
+	}
+
+	return self.ovsdbTransact(updateOperations)
+}
+
 func (self *OvsDriver) GetExternalIds() (map[string]string, error) {
 	selectOper := libovsdb.Operation{
 		Op:      "select",
@@ -551,9 +570,46 @@ func (self *OvsDriver) AddController(ipAddr string, portNo uint16) error {
 	return self.ovsdbTransact(operations)
 }
 
-func (self *OvsDriver) RemoveController(target string) error {
-	// FIXME:
-	return nil
+func (self *OvsDriver) RemoveController() error {
+	// clean controller configured in ovsdb
+	var controllerOperations, mutateOperations []libovsdb.Operation
+	var ctrlUUIDList []libovsdb.UUID
+	self.lock.Lock()
+	for _, row := range self.ovsdbCache["Bridge"] {
+		if row.Fields["name"] == self.OvsBridgeName {
+			ctrlUUIDList = listUUID(row.Fields["controller"])
+			break
+		}
+	}
+	self.lock.Unlock()
+
+	for _, ctrlUUID := range ctrlUUIDList {
+		condition := libovsdb.NewCondition("_uuid", "==", ctrlUUID)
+		ctrlOperation := libovsdb.Operation{
+			Op:    "delete",
+			Table: "Controller",
+			Where: []interface{}{condition},
+		}
+		controllerOperations = append(controllerOperations, ctrlOperation)
+
+		mutateSet, _ := libovsdb.NewOvsSet([]libovsdb.UUID{ctrlUUID})
+		mutation := libovsdb.NewMutation("controller", "delete", mutateSet)
+		condition = libovsdb.NewCondition("name", "==", self.OvsBridgeName)
+		mutateOperation := libovsdb.Operation{
+			Op:        "mutate",
+			Table:     "Bridge",
+			Mutations: []interface{}{mutation},
+			Where:     []interface{}{condition},
+		}
+		mutateOperations = append(mutateOperations, mutateOperation)
+	}
+
+	// Perform OVS transaction
+	var operations []libovsdb.Operation
+	operations = append(operations, controllerOperations...)
+	operations = append(operations, mutateOperations...)
+
+	return self.ovsdbTransact(operations)
 }
 
 // Check the local cache and see if the portname is taken already
@@ -700,6 +756,26 @@ func (self *OvsDriver) GetOfpPortNo(intfName string) (uint32, error) {
 		}
 		retryNo++
 	}
+}
+
+func listUUID(uuidList interface{}) []libovsdb.UUID {
+	var idList []libovsdb.UUID
+
+	switch uuidList.(type) {
+	case libovsdb.UUID:
+		return []libovsdb.UUID{uuidList.(libovsdb.UUID)}
+	case libovsdb.OvsSet:
+		uuidSet := uuidList.(libovsdb.OvsSet).GoSet
+		for item := range uuidSet {
+			idList = append(idList, listUUID(uuidSet[item])...)
+		}
+	}
+
+	return idList
+}
+
+func makeOVSDBSetFromList(list []string) []interface{} {
+	return []interface{}{"set", list}
 }
 
 // ************************ Notification handler for OVS DB changes ****************
