@@ -63,6 +63,40 @@ func NewOvsDriver(bridgeName string) *OvsDriver {
 	return ovsDriver
 }
 
+func NewOvsDriverForExistBridge(bridgeName string) *OvsDriver {
+	ovsDriver := new(OvsDriver)
+
+	// connect to OVS
+	ovs, err := libovsdb.ConnectUnix("/var/run/openvswitch/db.sock")
+	if err != nil {
+		log.Fatal("Failed to connect to ovsdb. Err: ", err)
+	}
+
+	// Setup state
+	ovsDriver.ovsClient = ovs
+	ovsDriver.OvsBridgeName = bridgeName
+	ovsDriver.ovsdbCache = make(map[string]map[string]libovsdb.Row)
+
+	go func() {
+		// Register for notifications
+		ovs.Register(ovsDriver)
+
+		// Populate initial state into cache
+		initial, _ := ovs.MonitorAll("Open_vSwitch", "")
+		ovsDriver.populateCache(*initial)
+	}()
+
+	// HACK: sleep the main thread so that Cache can be populated
+	time.Sleep(1 * time.Second)
+
+	if !ovsDriver.IsBridgePresent(bridgeName) {
+		log.Fatalf("Ovs bridge: %v not exists, failed to create ovsdb dirver", bridgeName)
+	}
+
+	// Return the new OVS driver
+	return ovsDriver
+}
+
 // Delete : Cleanup the ovsdb driver. delete the bridge we created.
 func (d *OvsDriver) Delete() error {
 	if d.ovsClient != nil {
