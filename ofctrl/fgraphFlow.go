@@ -90,6 +90,7 @@ type FlowAction struct {
 
 	conntrack      *ConnTrackAction
 	loadAction     *NXLoadAction // Load data into NXM fields
+	moveAction     *NXMoveAction // of Move action
 	learnAction    *LearnAction  // flow learn action
 	resubmitAction *ResubmitAction
 	outputAction   *OutputAction
@@ -138,6 +139,14 @@ type NXLoadAction struct {
 	Range *openflow13.NXRange
 }
 
+type NXMoveAction struct {
+	Length    uint16
+	SrcOffset uint16
+	DstOffset uint16
+	SrcField  *openflow13.MatchField
+	DstField  *openflow13.MatchField
+}
+
 func (f *Flow) Output(outputAction *OutputAction) error {
 	action := new(FlowAction)
 	action.actionType = "outputAction"
@@ -156,6 +165,44 @@ func NewOutputAction(actionType string, outputPort uint32) *OutputAction {
 	outputAction.outputPort = outputPort
 
 	return outputAction
+}
+
+func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string) (*NXMoveAction, error) {
+	srcMatchField, err := openflow13.FindFieldHeaderByName(srcMatchFieldName, true)
+	if err != nil {
+		return nil, err
+	}
+	dstMatchField, err := openflow13.FindFieldHeaderByName(dstMatchFieldName, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &NXMoveAction{
+		Length:    bitLen,
+		SrcOffset: srcOffset,
+		DstOffset: dstOffset,
+		SrcField:  srcMatchField,
+		DstField:  dstMatchField,
+	}, nil
+}
+
+func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string) error {
+	moveAct, err := NewNXMoveAction(bitLen, srcOffset, dstOffset, srcMatchFieldName, dstMatchFieldName)
+	if err != nil {
+		return err
+	}
+	action := new(FlowAction)
+	action.actionType = "moveAction"
+	action.moveAction = moveAct
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
+	if f.isInstalled {
+		return f.install()
+	}
+
+	return nil
 }
 
 func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
@@ -784,6 +831,14 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 			addActn = true
 
 			log.Debugf("Add loadAct action: %v", loadOfAction)
+
+		case "moveAction":
+			moveAct := flowAction.moveAction
+			moveOfAction := openflow13.NewNXActionRegMove(moveAct.Length, moveAct.SrcOffset, moveAct.DstOffset, moveAct.SrcField, moveAct.DstField)
+			actInstr.AddAction(moveOfAction, true)
+			addActn = true
+
+			log.Debugf("Add moveOfAction action: %v", moveOfAction)
 
 		case "learnAction":
 			learnAct := flowAction.learnAction
