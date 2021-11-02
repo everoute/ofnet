@@ -39,6 +39,8 @@ type FlowMatch struct {
 	VlanId         uint16            // vlan id
 	VlanIdMask     *uint16           // vlan id mask
 	ArpOper        uint16            // ARP Oper type
+	ArpTpa         *net.IP           // Arp Tpa (target IP)
+	ArpTpaMask     *net.IP           // Mask for Arp Tpa
 	IpSa           *net.IP           // IPv4 source addr
 	IpSaMask       *net.IP           // IPv4 source mask
 	IpDa           *net.IP           // IPv4 dest addr
@@ -482,6 +484,17 @@ func AddPortMask(field *openflow13.MatchField, portMask uint16) {
 	}
 }
 
+func AddArpTpaMask(field *openflow13.MatchField, arpTpaMask *net.IP) {
+	if arpTpaMask != nil {
+		mask := new(openflow13.ArpXPaField)
+		mask.ArpPa = *arpTpaMask
+
+		field.Mask = mask
+		field.HasMask = true
+		field.Length += uint8(mask.Len())
+	}
+}
+
 // Translate our match fields into openflow 1.3 match fields
 func (self *Flow) xlateMatch() openflow13.Match {
 	ofMatch := openflow13.NewMatch()
@@ -530,6 +543,13 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	if self.Match.ArpOper != 0 {
 		arpOperField := openflow13.NewArpOperField(self.Match.ArpOper)
 		ofMatch.AddField(*arpOperField)
+	}
+
+	// Handle ARP tpa
+	if self.Match.ArpTpa != nil {
+		arpTpaField := openflow13.NewArpTpaField(*self.Match.ArpTpa)
+		AddArpTpaMask(arpTpaField, self.Match.ArpTpaMask)
+		ofMatch.AddField(*arpTpaField)
 	}
 
 	// Handle IP Dst
