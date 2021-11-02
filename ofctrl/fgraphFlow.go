@@ -169,12 +169,12 @@ func NewOutputAction(actionType string, outputPort uint32) *OutputAction {
 	return outputAction
 }
 
-func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string) (*NXMoveAction, error) {
-	srcMatchField, err := openflow13.FindFieldHeaderByName(srcMatchFieldName, true)
+func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string, hasMask bool) (*NXMoveAction, error) {
+	srcMatchField, err := openflow13.FindFieldHeaderByName(srcMatchFieldName, hasMask)
 	if err != nil {
 		return nil, err
 	}
-	dstMatchField, err := openflow13.FindFieldHeaderByName(dstMatchFieldName, true)
+	dstMatchField, err := openflow13.FindFieldHeaderByName(dstMatchFieldName, hasMask)
 	if err != nil {
 		return nil, err
 	}
@@ -188,8 +188,8 @@ func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dst
 	}, nil
 }
 
-func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string) error {
-	moveAct, err := NewNXMoveAction(bitLen, srcOffset, dstOffset, srcMatchFieldName, dstMatchFieldName)
+func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string, hasMask bool) error {
+	moveAct, err := NewNXMoveAction(bitLen, srcOffset, dstOffset, srcMatchFieldName, dstMatchFieldName, hasMask)
 	if err != nil {
 		return err
 	}
