@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/Sirupsen/logrus v0.8.8-0.20160119000032-f7f79f729e0f
+	github.com/cenk/hub v1.0.1 // indirect
 	github.com/cenkalti/hub v1.0.1 // indirect
 	github.com/cenkalti/rpc2 v0.0.0-20210604223624-c1acbc6ec984 // indirect
 	github.com/contiv/libOpenflow v0.0.0-20200107061746-e3817550c83b
@@ -21,6 +22,6 @@ require (
 
 replace (
 	github.com/contiv/libOpenflow v0.0.0-20200107061746-e3817550c83b => github.com/echkenluo/libOpenflow v0.0.0-20210716071814-4ef09249fae5
-	github.com/contiv/libovsdb => github.com/smartxworks/libovsdb v0.0.0-20210326110222-6c508538aa65
+	github.com/contiv/libovsdb => github.com/everoute/libovsdb v0.0.0-20210326110222-6c508538aa65
 	github.com/osrg/gobgp => github.com/zwtop/gobgp v0.0.0-20210127101833-12edfc1f4514
 )

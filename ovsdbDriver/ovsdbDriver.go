@@ -81,8 +81,20 @@ func NewOvsDriverForExistBridge(bridgeName string) *OvsDriver {
 		// Register for notifications
 		ovs.Register(ovsDriver)
 
+		selectAll := libovsdb.MonitorSelect{
+			Initial: true,
+			Insert:  true,
+			Delete:  true,
+			Modify:  true,
+		}
+		requests := map[string]libovsdb.MonitorRequest{
+			"Port":         {Select: selectAll, Columns: []string{"name"}},
+			"Bridge":       {Select: selectAll, Columns: []string{"name", "controller"}},
+			"Open_vSwitch": {Select: selectAll, Columns: []string{"ovs_version"}},
+		}
+
 		// Populate initial state into cache
-		initial, _ := ovs.MonitorAll("Open_vSwitch", "")
+		initial, _ := ovs.Monitor("Open_vSwitch", "", requests)
 		ovsDriver.populateCache(*initial)
 	}()
 
