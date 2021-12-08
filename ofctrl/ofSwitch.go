@@ -42,6 +42,9 @@ type OFSwitch struct {
 	outputPorts  map[uint32]*Output
 
 	CookieAllocator cookie.Allocator
+	ready           bool
+	retry           chan bool // Channel to notify controller reconnect switch
+	ControllerID    uint16
 }
 
 var switchDb cmap.ConcurrentMap
@@ -52,7 +55,7 @@ func init() {
 
 // Builds and populates a Switch struct then starts listening
 // for OpenFlow messages on conn.
-func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface) *OFSwitch {
+func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, retryChan chan bool, id uint16) *OFSwitch {
 	var s *OFSwitch
 
 	if getSwitch(dpid) == nil {
@@ -62,6 +65,8 @@ func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterfa
 		s.app = app
 		s.stream = stream
 		s.dpid = dpid
+		s.retry = retryChan
+		s.ControllerID = id
 
 		// Initialize the fgraph elements
 		s.initFgraph()
@@ -127,6 +132,9 @@ func (self *OFSwitch) switchConnected() {
 func (self *OFSwitch) switchDisconnected() {
 	self.app.SwitchDisconnected(self)
 	switchDb.Remove(self.DPID().String())
+	if self.retry != nil {
+		self.retry <- true
+	}
 }
 
 // Receive loop for each Switch.
@@ -193,6 +201,13 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 	case *openflow13.VendorHeader:
 
 	case *openflow13.SwitchFeatures:
+		switch t.Header.Type {
+		case openflow13.Type_FeaturesReply:
+			swConfig := openflow13.NewSetConfig()
+			swConfig.MissSendLen = 128
+			self.Send(swConfig)
+			self.Send(openflow13.NewSetControllerID(self.ControllerID))
+		}
 
 	case *openflow13.SwitchConfig:
 		switch t.Header.Type {

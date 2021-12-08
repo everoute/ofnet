@@ -96,6 +96,12 @@ type FlowAction struct {
 	learnAction    *LearnAction  // flow learn action
 	resubmitAction *ResubmitAction
 	outputAction   *OutputAction
+	controller     *NXController
+}
+
+type NXController struct {
+	id     uint16
+	reason uint8
 }
 
 type OutputAction struct {
@@ -147,6 +153,24 @@ type NXMoveAction struct {
 	DstOffset uint16
 	SrcField  *openflow13.MatchField
 	DstField  *openflow13.MatchField
+}
+
+func (f *Flow) SendToController(controllerAction *NXController) error {
+	action := new(FlowAction)
+	action.actionType = "controller"
+	action.controller = controllerAction
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
+
+	return nil
+}
+
+func (f *Flow) NewControllerAction(controllerID uint16, reason uint8) *NXController {
+	return &NXController{
+		id:     controllerID,
+		reason: reason,
+	}
 }
 
 func (f *Flow) Output(outputAction *OutputAction) error {
@@ -899,6 +923,14 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 			}
 			addActn = true
 			log.Debugf("Add output Action: %v", outputAct)
+		case "controller":
+			controllerAct := flowAction.controller
+			err := actInstr.AddAction(openflow13.NewNXActionController(controllerAct.id), false)
+			if err != nil {
+				return err
+			}
+			addActn = true
+			log.Debugf("Add controller action: %v", controllerAct)
 
 		default:
 			log.Fatalf("Unknown action type %s", flowAction.actionType)
