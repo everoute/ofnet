@@ -17,9 +17,11 @@ package ofctrl
 // This file implements the forwarding graph API for the table
 
 import (
+	"fmt"
 	"github.com/contiv/libOpenflow/openflow13"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/contiv/ofnet/ofctrl/dperror"
 )
 
 // Fgraph table element
@@ -47,6 +49,9 @@ func (self *Table) NewFlow(match FlowMatch) (*Flow, error) {
 	flow.Table = self
 	flow.Match = match
 	flow.isInstalled = false
+	if self.Switch == nil {
+		return nil, dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+	}
 	if self.Switch.CookieAllocator != nil {
 		flow.FlowID = self.Switch.CookieAllocator.RequestCookie(globalFlowID).RawId()
 	} else {

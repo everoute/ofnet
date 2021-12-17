@@ -20,11 +20,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
+
+	"github.com/contiv/ofnet/ofctrl/dperror"
 )
 
 // Small subset of openflow fields we currently support
@@ -1015,6 +1018,9 @@ func (self *Flow) install() error {
 	log.Debugf("Sending flowmod: %+v", flowMod)
 
 	// Send the message
+	if self.Table.Switch == nil {
+		return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+	}
 	self.Table.Switch.Send(flowMod)
 
 	// Mark it as installed
@@ -1313,6 +1319,9 @@ func (self *Flow) Delete() error {
 		log.Debugf("Sending DELETE flowmod: %+v", flowMod)
 
 		// Send the message
+		if self.Table.Switch == nil {
+			return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+		}
 		self.Table.Switch.Send(flowMod)
 	}
 
@@ -1333,6 +1342,9 @@ func DeleteFlow(table *Table, priority uint16, flowID uint64) error {
 	log.Debugf("Sending DELETE flow mod: %+v", flowMod)
 
 	// Send the message
+	if table.Switch == nil {
+		return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+	}
 	table.Switch.Send(flowMod)
 
 	return nil
