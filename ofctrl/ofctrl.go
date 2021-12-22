@@ -17,6 +17,7 @@ package ofctrl
 // This library implements a simple openflow 1.3 controller
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/contiv/libOpenflow/util"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/contiv/ofnet/ofctrl/dperror"
 )
 
 type PacketIn openflow13.PacketIn
@@ -71,6 +73,7 @@ type Controller struct {
 	connectMode  ConnectionMode
 	stopChan     chan bool
 	DisconnChan  chan bool
+	ErrorChan    chan error
 	controllerID uint16
 }
 
@@ -94,6 +97,7 @@ func NewControllerAsOFClient(app AppInterface, controllerID uint16) *Controller 
 	// Construct stop flag
 	c.stopChan = make(chan bool)
 	c.DisconnChan = make(chan bool)
+	c.ErrorChan = make(chan error)
 	c.app = app
 	c.controllerID = controllerID
 
@@ -111,6 +115,9 @@ func (c *Controller) Connect(sock string) {
 	if c.DisconnChan == nil {
 		// Construct disconnection flag for notifying controller to retry connections
 		c.DisconnChan = make(chan bool)
+	}
+	if c.ErrorChan == nil {
+		c.ErrorChan = make(chan error)
 	}
 	go func() {
 		// Setup initial connection
@@ -145,7 +152,8 @@ func (c *Controller) Connect(sock string) {
 				time.Sleep(time.Second * time.Duration(RetryInterval))
 			}
 			if err != nil {
-				log.Fatalf("Failed to reconnect ovs-vswitchd after max retry, error: %v", err)
+				log.Errorf("Failed to reconnect ovs-vswitchd after max retry, error: %v", err)
+				c.ErrorChan <- dperror.NewDpError(dperror.ExcedOfConnMaxRetry.Code, dperror.ExcedOfConnMaxRetry.Msg, fmt.Errorf("openflow connection broken, failed to reconnect to ovs-vswitchd"))
 			}
 
 			c.wg.Add(1)

@@ -7,6 +7,7 @@ import (
 var (
 	OK                      = &ErrorNo{Code: 0, Msg: "OK"}
 	SwitchDisconnectedError = &ErrorNo{Code: 1000, Msg: "switch disconnected"}
+	ExcedOfConnMaxRetry     = &ErrorNo{Code: 1001, Msg: "Exceed openflow connection max retry"}
 	DefaultInternalError    = &ErrorNo{Code: 10000, Msg: "default internal error"}
 )
 
