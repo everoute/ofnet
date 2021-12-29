@@ -38,7 +38,7 @@ const (
 )
 
 const (
-	MaxRetry      = 8
+	MaxRetry      = 100
 	RetryInterval = 1
 )
 
