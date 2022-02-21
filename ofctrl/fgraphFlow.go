@@ -427,12 +427,13 @@ func (f *Flow) Learn(learnAction *LearnAction) error {
 	return nil
 }
 
-func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16) *ConnTrackAction {
+func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, actions ...openflow13.Action) *ConnTrackAction {
 	return &ConnTrackAction{
-		Commit: commit,
-		Force:  force,
-		Table:  table,
-		Zone:   zone,
+		Commit:  commit,
+		Force:   force,
+		Table:   table,
+		Zone:    zone,
+		Actions: actions,
 	}
 }
 
