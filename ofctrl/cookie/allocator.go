@@ -1,17 +1,18 @@
 package cookie
 
 const (
-	BitWidthRoundNum        = 16
-	BitWidthFlowId          = 64 - BitWidthRoundNum
-	RoundNumMask     uint64 = 0xffff_0000_0000_0000
-	FlowIdMask       uint64 = 0x0000_ffff_ffff_ffff
+	BitWidthReserved        = 32
+	BitWidthRoundNum        = 10
+	BitWidthFlowId          = 64 - BitWidthReserved - BitWidthRoundNum
+	RoundNumMask     uint64 = 0x0000_0000_ffc0_0000
+	FlowIdMask       uint64 = 0x0000_0000_003f_ffff
 )
 
 type ID uint64
 
 func newId(round uint64, flowId uint64) ID {
 	r := uint64(0)
-	r |= round << (64 - BitWidthRoundNum)
+	r |= round << (64 - BitWidthReserved - BitWidthRoundNum)
 	r |= uint64(flowId)
 
 	return ID(r)
@@ -22,7 +23,7 @@ func (i ID) RawId() uint64 {
 }
 
 func (i ID) Round() uint64 {
-	return i.RawId() >> (64 - BitWidthRoundNum)
+	return i.RawId() >> (64 - BitWidthReserved - BitWidthRoundNum)
 }
 
 type Allocator interface {
@@ -45,5 +46,5 @@ func NewAllocator(roundNum uint64) Allocator {
 }
 
 func RoundCookieWithMask(roundNum uint64) (uint64, uint64) {
-	return roundNum << (64 - BitWidthRoundNum), RoundNumMask
+	return roundNum << (64 - BitWidthReserved - BitWidthRoundNum), RoundNumMask
 }
