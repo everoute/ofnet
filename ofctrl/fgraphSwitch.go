@@ -18,10 +18,13 @@ package ofctrl
 
 import (
 	"errors"
+	"fmt"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
 
 	"github.com/contiv/ofnet/ofctrl/cookie"
+	"github.com/contiv/ofnet/ofctrl/dperror"
 )
 
 // Initialize the fgraph elements on the switch
@@ -90,6 +93,21 @@ func (self *OFSwitch) NewTable(tableId uint8) (*Table, error) {
 // Return an error if there are fgraph nodes pointing at it
 func (self *OFSwitch) DeleteTable(tableId uint8) error {
 	// FIXME: to be implemented
+	delete(self.tableDb, tableId)
+	flowMod := openflow13.NewFlowMod()
+	flowMod.Command = openflow13.FC_DELETE
+	flowMod.TableId = tableId
+	flowMod.OutPort = openflow13.P_ANY
+	flowMod.OutGroup = openflow13.OFPG_ANY
+
+	log.Debugf("Sending DELETE table flowmod: %+v", flowMod)
+
+	// Send the message
+	if self == nil {
+		return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+	}
+	self.Send(flowMod)
+
 	return nil
 }
 
