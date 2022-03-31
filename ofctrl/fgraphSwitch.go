@@ -89,16 +89,24 @@ func (self *OFSwitch) NewTable(tableId uint8) (*Table, error) {
 	return table, nil
 }
 
-// Delete a table.
+// Delete a table or specific flows.
 // Return an error if there are fgraph nodes pointing at it
-func (self *OFSwitch) DeleteTable(tableId uint8) error {
+func (self *OFSwitch) DeleteSpecTableFlows(tableId uint8, priority *uint16, ofMatch []*openflow13.MatchField) error {
 	// FIXME: to be implemented
-	delete(self.tableDb, tableId)
 	flowMod := openflow13.NewFlowMod()
-	flowMod.Command = openflow13.FC_DELETE
 	flowMod.TableId = tableId
-	flowMod.OutPort = openflow13.P_ANY
-	flowMod.OutGroup = openflow13.OFPG_ANY
+	for _, field := range ofMatch {
+		flowMod.Match.AddField(*field)
+	}
+	if priority == nil {
+		delete(self.tableDb, tableId)
+		flowMod.Command = openflow13.FC_DELETE
+		flowMod.OutPort = openflow13.P_ANY
+		flowMod.OutGroup = openflow13.OFPG_ANY
+	} else {
+		flowMod.Priority = *priority
+		flowMod.Command = openflow13.FC_DELETE_STRICT
+	}
 
 	log.Debugf("Sending DELETE table flowmod: %+v", flowMod)
 
