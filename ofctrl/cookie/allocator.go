@@ -2,10 +2,10 @@ package cookie
 
 const (
 	BitWidthReserved        = 32
-	BitWidthRoundNum        = 10
+	BitWidthRoundNum        = 4
 	BitWidthFlowId          = 64 - BitWidthReserved - BitWidthRoundNum
-	RoundNumMask     uint64 = 0x0000_0000_ffc0_0000
-	FlowIdMask       uint64 = 0x0000_0000_003f_ffff
+	RoundNumMask     uint64 = 0x0000_0000_f000_0000
+	FlowIdMask       uint64 = 0x0000_0000_0fff_ffff
 )
 
 type ID uint64
