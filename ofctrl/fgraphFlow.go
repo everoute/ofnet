@@ -1004,8 +1004,10 @@ func (self *Flow) install() error {
 	case "empty":
 		instr := self.NextElem.GetFlowInstr()
 		if instr != nil {
-			self.installFlowActions(flowMod, instr)
-
+			err := self.installFlowActions(flowMod, instr)
+			if err != nil {
+				return err
+			}
 			if len(instr.(*openflow13.InstrActions).Actions) > 0 {
 				flowMod.AddInstruction(instr)
 			}
