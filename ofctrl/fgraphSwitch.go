@@ -32,6 +32,7 @@ func (self *OFSwitch) initFgraph() error {
 	// Create the DBs
 	self.tableDb = make(map[uint8]*Table)
 	self.outputPorts = make(map[uint32]*Output)
+	self.groupDb = make(map[uint32]*Group)
 
 	// Create the table 0
 	table := new(Table)
@@ -196,4 +197,27 @@ func (self *OFSwitch) DeleteFlowByCookie(cookieId, cookieMask uint64) {
 	flowMod.TableId = openflow13.OFPTT_ALL
 
 	self.Send(flowMod)
+}
+
+// Create a new group. return an error if it already exists
+func (self *OFSwitch) NewGroup(groupId uint32, groupType uint8) (*Group, error) {
+	// check if the group already exists
+	if self.groupDb[groupId] != nil {
+		return nil, errors.New("group already exists")
+	}
+
+	// Create a new group
+	group := newGroup(groupId, groupType, self)
+	// Save it in the DB
+	self.groupDb[groupId] = group
+
+	return group, nil
+}
+
+func (self *OFSwitch) DeleteGroup(groupId uint32) {
+	delete(self.groupDb, groupId)
+}
+
+func (self *OFSwitch) GetGroup(groupId uint32) *Group {
+	return self.groupDb[groupId]
 }

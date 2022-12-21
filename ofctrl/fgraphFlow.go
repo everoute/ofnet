@@ -81,138 +81,24 @@ type NXRegister struct {
 	Range *openflow13.NXRange // register range selection mask
 }
 
-// additional actions in flow's instruction set
-type FlowAction struct {
-	actionType   string           // Type of action "setVlan", "setMetadata"
-	vlanId       uint16           // Vlan Id in case of "setVlan"
-	macAddr      net.HardwareAddr // Mac address to set
-	ipAddr       net.IP           // IP address to be set
-	l4Port       uint16           // Transport port to be set
-	tunnelId     uint64           // Tunnel Id (used for setting VNI)
-	metadata     uint64           // Metadata in case of "setMetadata"
-	metadataMask uint64           // Metadata mask
-	dscp         uint8            // DSCP field
-
-	conntrack      *ConnTrackAction
-	loadAction     *NXLoadAction // Load data into NXM fields
-	moveAction     *NXMoveAction // of Move action
-	learnAction    *LearnAction  // flow learn action
-	resubmitAction *ResubmitAction
-	outputAction   *OutputAction
-	controller     *NXController
-}
-
-type NXController struct {
-	id     uint16
-	reason uint8
-}
-
-type OutputAction struct {
-	actionType string
-	outputPort uint32
-}
-
-type ConnTrackAction struct {
-	Commit  bool
-	Force   bool
-	Table   *uint8
-	Zone    *uint16
-	Actions []openflow13.Action
-}
-
-type ResubmitAction struct {
-	tableId uint8
-	inPort  uint16
-}
-
-type LearnAction struct {
-	idleTimeout    uint16
-	hardTimeout    uint16
-	priority       uint16
-	cookie         uint64
-	flags          uint16
-	tableID        uint8
-	pad            uint8
-	finIdleTimeout uint16
-	finHardTimeout uint16
-	specs          []*openflow13.NXLearnSpec
-	pad2           []byte
-}
-
-type LearnField struct {
-	Name  string
-	Start uint16
-}
-
-type NXLoadAction struct {
-	Field *openflow13.MatchField
-	Value uint64
-	Range *openflow13.NXRange
-}
-
-type NXMoveAction struct {
-	Length    uint16
-	SrcOffset uint16
-	DstOffset uint16
-	SrcField  *openflow13.MatchField
-	DstField  *openflow13.MatchField
-}
-
 func (f *Flow) SendToController(controllerAction *NXController) error {
-	action := new(FlowAction)
-	action.actionType = "controller"
-	action.controller = controllerAction
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.flowActions = append(f.flowActions, action)
+	f.flowActions = append(f.flowActions, controllerAction)
 
 	return nil
 }
 
 func (f *Flow) NewControllerAction(controllerID uint16, reason uint8) *NXController {
-	return &NXController{
-		id:     controllerID,
-		reason: reason,
-	}
+	return NewControllerAction(controllerID, reason)
 }
 
 func (f *Flow) Output(outputAction *OutputAction) error {
-	action := new(FlowAction)
-	action.actionType = "outputAction"
-	action.outputAction = outputAction
-
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.flowActions = append(f.flowActions, action)
+	f.flowActions = append(f.flowActions, outputAction)
 
 	return nil
-}
-
-func NewOutputAction(actionType string, outputPort uint32) *OutputAction {
-	outputAction := new(OutputAction)
-	outputAction.actionType = actionType
-	outputAction.outputPort = outputPort
-
-	return outputAction
-}
-
-func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string, hasMask bool) (*NXMoveAction, error) {
-	srcMatchField, err := openflow13.FindFieldHeaderByName(srcMatchFieldName, hasMask)
-	if err != nil {
-		return nil, err
-	}
-	dstMatchField, err := openflow13.FindFieldHeaderByName(dstMatchFieldName, hasMask)
-	if err != nil {
-		return nil, err
-	}
-
-	return &NXMoveAction{
-		Length:    bitLen,
-		SrcOffset: srcOffset,
-		DstOffset: dstOffset,
-		SrcField:  srcMatchField,
-		DstField:  dstMatchField,
-	}, nil
 }
 
 func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string, hasMask bool) error {
@@ -220,31 +106,15 @@ func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName,
 	if err != nil {
 		return err
 	}
-	action := new(FlowAction)
-	action.actionType = "moveAction"
-	action.moveAction = moveAct
 
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.flowActions = append(f.flowActions, action)
+	f.flowActions = append(f.flowActions, moveAct)
 	if f.isInstalled {
 		return f.install()
 	}
 
 	return nil
-}
-
-func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
-	field, err := openflow13.FindFieldHeaderByName(fieldName, true)
-	if err != nil {
-		return nil, err
-	}
-
-	return &NXLoadAction{
-		Field: field,
-		Range: dataRange,
-		Value: data,
-	}, nil
 }
 
 func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow13.NXRange) error {
@@ -252,41 +122,19 @@ func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow13.NX
 	if err != nil {
 		return err
 	}
-	action := new(FlowAction)
-	action.actionType = "loadAction"
-	action.loadAction = loadAct
 
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.flowActions = append(f.flowActions, action)
+	f.flowActions = append(f.flowActions, loadAct)
 	if f.isInstalled {
 		return f.install()
 	}
 
 	return nil
-}
-
-func NewResubmitAction(inPort *uint16, table *uint8) *ResubmitAction {
-	resubmit := new(ResubmitAction)
-	if inPort == nil {
-		resubmit.inPort = openflow13.OFPP_IN_PORT
-	} else {
-		resubmit.inPort = *inPort
-	}
-
-	if table == nil {
-		resubmit.tableId = openflow13.OFPTT_ALL
-	} else {
-		resubmit.tableId = *table
-	}
-
-	return resubmit
 }
 
 func (f *Flow) Resubmit(inPort *uint16, tableId *uint8) error {
-	action := new(FlowAction)
-	action.resubmitAction = NewResubmitAction(inPort, tableId)
-	action.actionType = "resubmitAction"
+	action := NewResubmitAction(inPort, tableId)
 
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -296,18 +144,6 @@ func (f *Flow) Resubmit(inPort *uint16, tableId *uint8) error {
 	}
 
 	return nil
-}
-
-func NewLearnAction(tableId uint8, priority, idleTimeout, hardTimeout, finIdleTimeout, finHardTimeout uint16, cookieId uint64) *LearnAction {
-	return &LearnAction{
-		idleTimeout:    idleTimeout,
-		hardTimeout:    hardTimeout,
-		priority:       priority,
-		cookie:         cookieId,
-		tableID:        tableId,
-		finHardTimeout: finHardTimeout,
-		finIdleTimeout: finIdleTimeout,
-	}
 }
 
 func (l *LearnAction) AddLearnedLoadAction(learnDstField *LearnField, learnBitLen uint16, learnSrcField *LearnField, learnSrcValue []byte) error {
@@ -413,13 +249,9 @@ func getLearnSpecWithField(header *openflow13.NXLearnSpecHeader, dstField *openf
 }
 
 func (f *Flow) Learn(learnAction *LearnAction) error {
-	action := new(FlowAction)
-	action.actionType = "learnAction"
-	action.learnAction = learnAction
-
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.flowActions = append(f.flowActions, action)
+	f.flowActions = append(f.flowActions, learnAction)
 	if f.isInstalled {
 		return f.install()
 	}
@@ -427,47 +259,15 @@ func (f *Flow) Learn(learnAction *LearnAction) error {
 	return nil
 }
 
-func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, actions ...openflow13.Action) *ConnTrackAction {
-	return &ConnTrackAction{
-		Commit:  commit,
-		Force:   force,
-		Table:   table,
-		Zone:    zone,
-		Actions: actions,
-	}
-}
-
-func (c *ConnTrackAction) installConntrackAction() openflow13.Action {
-	ctAction := openflow13.NewNXActionConnTrack()
-
-	if c.Commit {
-		ctAction.Commit()
-	}
-	if c.Force {
-		ctAction.Force()
-	}
-	if c.Table != nil {
-		ctAction.Table(*c.Table)
-	}
-	if c.Zone != nil {
-		ctAction.ZoneImm(*c.Zone)
-	}
-	if c.Actions != nil {
-		ctAction = ctAction.AddAction(c.Actions...)
-	}
-
-	return ctAction
-}
-
 // State of a flow entry
 type Flow struct {
-	Table       *Table        // Table where this flow resides
-	Match       FlowMatch     // Fields to be matched
-	NextElem    FgraphElem    // Next fw graph element
-	isInstalled bool          // Is the flow installed in the switch
-	FlowID      uint64        // Unique ID for the flow
-	flowActions []*FlowAction // List of flow actions
-	lock        sync.RWMutex  // lock for modifying flow state
+	Table       *Table       // Table where this flow resides
+	Match       FlowMatch    // Fields to be matched
+	NextElem    FgraphElem   // Next fw graph element
+	isInstalled bool         // Is the flow installed in the switch
+	FlowID      uint64       // Unique ID for the flow
+	flowActions []Action     // List of flow actions
+	lock        sync.RWMutex // lock for modifying flow state
 }
 
 const IP_PROTO_TCP = 6
@@ -726,14 +526,14 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 	// Loop thru all actions
 	for _, flowAction := range self.flowActions {
-		switch flowAction.actionType {
-		case "setVlan":
+		actType := flowAction.GetActionType()
+		switch actType {
+		case ActTypeSetVlan:
 			// Push Vlan Tag action
-			pushVlanAction := openflow13.NewActionPushVlan(0x8100)
+			pushVlanAction, _ := NewPushVlanAction(0x8100).ToOfAction()
 
 			// Set Outer vlan tag field
-			vlanField := openflow13.NewVlanIdField(flowAction.vlanId, nil)
-			setVlanAction := openflow13.NewActionSetField(*vlanField)
+			setVlanAction, _ := flowAction.ToOfAction()
 
 			// Prepend push vlan & setvlan actions to existing instruction
 			actInstr.AddAction(setVlanAction, true)
@@ -743,201 +543,40 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 			log.Debugf("flow install. Added pushvlan action: %+v, setVlan actions: %+v",
 				pushVlanAction, setVlanAction)
 
-		case "popVlan":
-			// Create pop vln action
-			popVlan := openflow13.NewActionPopVlan()
-
-			// Add it to instruction
-			actInstr.AddAction(popVlan, true)
-			addActn = true
-
-			log.Debugf("flow install. Added popVlan action: %+v", popVlan)
-
-		case "setMacDa":
-			// Set Outer MacDA field
-			macDaField := openflow13.NewEthDstField(flowAction.macAddr, nil)
-			setMacDaAction := openflow13.NewActionSetField(*macDaField)
-
-			// Add set macDa action to the instruction
-			actInstr.AddAction(setMacDaAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setMacDa action: %+v", setMacDaAction)
-
-		case "setMacSa":
-			// Set Outer MacSA field
-			macSaField := openflow13.NewEthSrcField(flowAction.macAddr, nil)
-			setMacSaAction := openflow13.NewActionSetField(*macSaField)
-
-			// Add set macDa action to the instruction
-			actInstr.AddAction(setMacSaAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setMacSa Action: %+v", setMacSaAction)
-
-		case "setTunnelId":
-			// Set tunnelId field
-			tunnelIdField := openflow13.NewTunnelIdField(flowAction.tunnelId)
-			setTunnelAction := openflow13.NewActionSetField(*tunnelIdField)
-
-			// Add set tunnel action to the instruction
-			actInstr.AddAction(setTunnelAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setTunnelId Action: %+v", setTunnelAction)
-
-		case "setMetadata":
+		case ActTypeMetatdata:
+			act := flowAction.(*SetMetadata)
 			// Set Metadata instruction
-			metadataInstr := openflow13.NewInstrWriteMetadata(flowAction.metadata, flowAction.metadataMask)
+			metadataInstr := openflow13.NewInstrWriteMetadata(act.metadata, act.metadataMask)
 
 			// Add the instruction to flowmod
 			flowMod.AddInstruction(metadataInstr)
 
-		case "setIPSa":
-			// Set IP src
-			ipSaField := openflow13.NewIpv4SrcField(flowAction.ipAddr, nil)
-			setIPSaAction := openflow13.NewActionSetField(*ipSaField)
+		case ActTypePopVlan, ActTypeSetDstMac, ActTypeSetSrcMac, ActTypeSetTunnelID, ActTypeSetSrcIP, ActTypeSetDstIP,
+			ActTypeSetDSCP, ActTypeSetTCPsPort, ActTypeSetTCPdPort, ActTypeSetUDPdPort, ActTypeSetUDPsPort, ActTypeNXLoad,
+			ActTypeNXMove, ActTypeNXLearn:
+			act, _ := flowAction.ToOfAction()
 
-			// Add set action to the instruction
-			actInstr.AddAction(setIPSaAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setIPSa Action: %+v", setIPSaAction)
-
-		case "setIPDa":
-			// Set IP dst
-			ipDaField := openflow13.NewIpv4DstField(flowAction.ipAddr, nil)
-			setIPDaAction := openflow13.NewActionSetField(*ipDaField)
-
-			// Add set action to the instruction
-			actInstr.AddAction(setIPDaAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setIPDa Action: %+v", setIPDaAction)
-
-		case "setDscp":
-			// Set DSCP field
-			ipDscpField := openflow13.NewIpDscpField(flowAction.dscp)
-			setIPDscpAction := openflow13.NewActionSetField(*ipDscpField)
-
-			// Add set action to the instruction
-			actInstr.AddAction(setIPDscpAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setDscp Action: %+v", setIPDscpAction)
-
-		case "setTCPSrc":
-			// Set TCP src
-			tcpSrcField := openflow13.NewTcpSrcField(flowAction.l4Port)
-			setTCPSrcAction := openflow13.NewActionSetField(*tcpSrcField)
-
-			// Add set action to the instruction
-			actInstr.AddAction(setTCPSrcAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setTCPSrc Action: %+v", setTCPSrcAction)
-
-		case "setTCPDst":
-			// Set TCP dst
-			tcpDstField := openflow13.NewTcpDstField(flowAction.l4Port)
-			setTCPDstAction := openflow13.NewActionSetField(*tcpDstField)
-
-			// Add set action to the instruction
-			actInstr.AddAction(setTCPDstAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setTCPDst Action: %+v", setTCPDstAction)
-
-		case "setUDPSrc":
-			// Set UDP src
-			udpSrcField := openflow13.NewUdpSrcField(flowAction.l4Port)
-			setUDPSrcAction := openflow13.NewActionSetField(*udpSrcField)
-
-			// Add set action to the instruction
-			actInstr.AddAction(setUDPSrcAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setUDPSrc Action: %+v", setUDPSrcAction)
-
-		case "setUDPDst":
-			// Set UDP dst
-			udpDstField := openflow13.NewUdpDstField(flowAction.l4Port)
-			setUDPDstAction := openflow13.NewActionSetField(*udpDstField)
-
-			// Add set action to the instruction
-			actInstr.AddAction(setUDPDstAction, true)
-			addActn = true
-
-			log.Debugf("flow install. Added setUDPDst Action: %+v", setUDPDstAction)
-
-		case "loadAction":
-			loadAct := flowAction.loadAction
-			ofsBits := loadAct.Range.ToOfsBits()
-			loadOfAction := openflow13.NewNXActionRegLoad(ofsBits, loadAct.Field, loadAct.Value)
-
-			actInstr.AddAction(loadOfAction, true)
-			addActn = true
-
-			log.Debugf("Add loadAct action: %v", loadOfAction)
-
-		case "moveAction":
-			moveAct := flowAction.moveAction
-			moveOfAction := openflow13.NewNXActionRegMove(moveAct.Length, moveAct.SrcOffset, moveAct.DstOffset, moveAct.SrcField, moveAct.DstField)
-			actInstr.AddAction(moveOfAction, true)
-			addActn = true
-
-			log.Debugf("Add moveOfAction action: %v", moveOfAction)
-
-		case "learnAction":
-			learnAct := flowAction.learnAction
-			learnAction := openflow13.NewNXActionLearn()
-			learnAction.IdleTimeout = learnAct.idleTimeout
-			learnAction.HardTimeout = learnAct.hardTimeout
-			learnAction.Priority = learnAct.priority
-			learnAction.Cookie = learnAct.cookie
-			learnAction.Flags = learnAct.flags
-			learnAction.TableID = learnAct.tableID
-			learnAction.FinIdleTimeout = learnAct.finIdleTimeout
-			learnAction.FinHardTimeout = learnAct.finHardTimeout
-			learnAction.LearnSpecs = learnAct.specs
-
-			err := actInstr.AddAction(learnAction, true)
+			// Add it to instruction
+			err := actInstr.AddAction(act, true)
 			if err != nil {
 				return err
 			}
 			addActn = true
 
-			log.Debugf("Add learn action: %v", learnAction)
+			log.Debugf("flow install. Added %s action: %+v", actType, act)
 
-		case "resubmitAction":
-			resubmitAct := flowAction.resubmitAction
-			err := actInstr.AddAction(openflow13.NewNXActionResubmitTableAction(resubmitAct.inPort, resubmitAct.tableId), false)
+		case ActTypeNXResubmit, ActTypeOutput, ActTypeController, ActTypeGroup:
+			act, _ := flowAction.ToOfAction()
+			err := actInstr.AddAction(act, false)
 			if err != nil {
 				return err
 			}
 			addActn = true
 
-			log.Debugf("Add resubmit action: %v", resubmitAct)
-
-		case "outputAction":
-			outputAct := flowAction.outputAction
-			err := actInstr.AddAction(openflow13.NewActionOutput(outputAct.outputPort), false)
-			if err != nil {
-				return err
-			}
-			addActn = true
-			log.Debugf("Add output Action: %v", outputAct)
-		case "controller":
-			controllerAct := flowAction.controller
-			err := actInstr.AddAction(openflow13.NewNXActionController(controllerAct.id), false)
-			if err != nil {
-				return err
-			}
-			addActn = true
-			log.Debugf("Add controller action: %v", controllerAct)
+			log.Debugf("Add %s action: %v", actType, act)
 
 		default:
-			log.Fatalf("Unknown action type %s", flowAction.actionType)
+			log.Fatalf("Unknown action type %s", actType)
 		}
 	}
 
@@ -1001,6 +640,8 @@ func (self *Flow) install() error {
 
 			log.Debugf("flow install: added output port instr: %+v", instr)
 		}
+	case "group":
+		fallthrough
 	case "empty":
 		instr := self.NextElem.GetFlowInstr()
 		if instr != nil {
@@ -1082,9 +723,7 @@ func (self *Flow) SetConntrack(connTrackAction *ConnTrackAction) error {
 
 // Special actions on the flow to set vlan id
 func (self *Flow) SetVlan(vlanId uint16) error {
-	action := new(FlowAction)
-	action.actionType = "setVlan"
-	action.vlanId = vlanId
+	action := NewSetVlanAction(vlanId)
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1102,8 +741,7 @@ func (self *Flow) SetVlan(vlanId uint16) error {
 
 // Special actions on the flow to set vlan id
 func (self *Flow) PopVlan() error {
-	action := new(FlowAction)
-	action.actionType = "popVlan"
+	action := NewPopVlanAction()
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1121,9 +759,7 @@ func (self *Flow) PopVlan() error {
 
 // Special actions on the flow to set mac dest addr
 func (self *Flow) SetMacDa(macDa net.HardwareAddr) error {
-	action := new(FlowAction)
-	action.actionType = "setMacDa"
-	action.macAddr = macDa
+	action := NewSetDstMac(macDa)
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1141,9 +777,7 @@ func (self *Flow) SetMacDa(macDa net.HardwareAddr) error {
 
 // Special action on the flow to set mac source addr
 func (self *Flow) SetMacSa(macSa net.HardwareAddr) error {
-	action := new(FlowAction)
-	action.actionType = "setMacSa"
-	action.macAddr = macSa
+	action := NewSetSrcMac(macSa)
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1161,12 +795,11 @@ func (self *Flow) SetMacSa(macSa net.HardwareAddr) error {
 
 // Special action on the flow to set an ip field
 func (self *Flow) SetIPField(ip net.IP, field string) error {
-	action := new(FlowAction)
-	action.ipAddr = ip
+	var action Action
 	if field == "Src" {
-		action.actionType = "setIPSa"
+		action = NewSetSrcIP(ip)
 	} else if field == "Dst" {
-		action.actionType = "setIPDa"
+		action = NewSetDstIP(ip)
 	} else {
 		return errors.New("field not supported")
 	}
@@ -1187,21 +820,20 @@ func (self *Flow) SetIPField(ip net.IP, field string) error {
 
 // Special action on the flow to set a L4 field
 func (self *Flow) SetL4Field(port uint16, field string) error {
-	action := new(FlowAction)
-	action.l4Port = port
+	var action Action
 
 	switch field {
 	case "TCPSrc":
-		action.actionType = "setTCPSrc"
+		action = NewSetTCPSrc(port)
 		break
 	case "TCPDst":
-		action.actionType = "setTCPDst"
+		action = NewSetTCPDst(port)
 		break
 	case "UDPSrc":
-		action.actionType = "setUDPSrc"
+		action = NewSetUDPSrc(port)
 		break
 	case "UDPDst":
-		action.actionType = "setUDPDst"
+		action = NewSetUDPDst(port)
 		break
 	default:
 		return errors.New("field not supported")
@@ -1223,10 +855,7 @@ func (self *Flow) SetL4Field(port uint16, field string) error {
 
 // Special actions on the flow to set metadata
 func (self *Flow) SetMetadata(metadata, metadataMask uint64) error {
-	action := new(FlowAction)
-	action.actionType = "setMetadata"
-	action.metadata = metadata
-	action.metadataMask = metadataMask
+	action := NewSetMetadata(metadata, metadataMask)
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1244,9 +873,7 @@ func (self *Flow) SetMetadata(metadata, metadataMask uint64) error {
 
 // Special actions on the flow to set vlan id
 func (self *Flow) SetTunnelId(tunnelId uint64) error {
-	action := new(FlowAction)
-	action.actionType = "setTunnelId"
-	action.tunnelId = tunnelId
+	action := NewSetTunnelID(tunnelId)
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1262,11 +889,23 @@ func (self *Flow) SetTunnelId(tunnelId uint64) error {
 	return nil
 }
 
+// Special actions on the flow to set group
+func (self *Flow) SetGroup(groupID uint32) error {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+
+	self.flowActions = append(self.flowActions, NewGroupAction(groupID))
+
+	if self.isInstalled {
+		self.install()
+	}
+
+	return nil
+}
+
 // Special actions on the flow to set dscp field
 func (self *Flow) SetDscp(dscp uint8) error {
-	action := new(FlowAction)
-	action.actionType = "setDscp"
-	action.dscp = dscp
+	action := NewSetDscp(dscp)
 
 	self.lock.Lock()
 	defer self.lock.Unlock()
@@ -1289,7 +928,7 @@ func (self *Flow) UnsetDscp() error {
 
 	// Delete to the action from db
 	for idx, act := range self.flowActions {
-		if act.actionType == "setDscp" {
+		if act.GetActionType() == ActTypeSetDSCP {
 			self.flowActions = append(self.flowActions[:idx], self.flowActions[idx+1:]...)
 		}
 	}

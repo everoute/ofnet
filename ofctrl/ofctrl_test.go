@@ -1,5 +1,4 @@
-/*
-**
+/***
 Copyright 2014 Cisco Systems Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +15,7 @@ limitations under the License.
 package ofctrl
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -62,8 +62,16 @@ var ctrler *Controller
 var ovsDriver *ovsdbDriver.OvsDriver
 
 // Run an ovs-ofctl command
-func runOfctlCmd(cmd, brName string) ([]byte, error) {
-	cmdStr := fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow13 %s %s", cmd, brName)
+func runOfctlCmd(cmd, brName string, args ...string) ([]byte, error) {
+	var cmdStr string
+	if len(args) == 0 {
+		cmdStr = fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow13 %s %s", cmd, brName)
+	} else if len(args) == 1 {
+		cmdStr = fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow13 %s %s %s", cmd, brName, args[0])
+	} else {
+		return nil, errors.New("error params")
+	}
+
 	out, err := exec.Command("/bin/sh", "-c", cmdStr).Output()
 	if err != nil {
 		log.Errorf("error running ovs-ofctl %s %s. Error: %v", cmd, brName, err)
@@ -680,4 +688,21 @@ func TestMatchSetUdpFields(t *testing.T) {
 		"set_field:5000->udp_dst,set_field:4000->udp_src,goto_table:1") {
 		t.Errorf("in port flow still found in OVS after deleting it.")
 	}
+}
+
+func TestSetGroup(t *testing.T) {
+	group, _ := ofActor.Switch.NewGroup(2, openflow13.OFPGT_SELECT)
+	group.Install()
+
+	flow, _ := ofActor.inputTable.NewFlow(FlowMatch{
+		Priority:  100,
+		Ethertype: 0x0800,
+	})
+	flow.SetGroup(2)
+	flow.Next(NewEmptyElem())
+
+	if !ofctlDumpFlowMatch("ovsbr11", 0, "priority=100,ip", "group:2") {
+		t.Errorf("failed to install flow action withh group")
+	}
+	group.Delete()
 }
