@@ -24,7 +24,7 @@ import (
 	"github.com/contiv/libOpenflow/util"
 
 	log "github.com/Sirupsen/logrus"
-	cmap "github.com/streamrail/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map"
 
 	"github.com/contiv/ofnet/ofctrl/cookie"
 )

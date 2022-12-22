@@ -11,7 +11,7 @@ require (
 	github.com/contiv/libovsdb v0.0.0-20160406174930-bbc744d8ddc8
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/streamrail/concurrent-map v0.0.0-20160823150647-8bf1e9bacbf6
+	github.com/orcaman/concurrent-map v1.0.0
 	github.com/stretchr/testify v1.5.1 // indirect
 	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
