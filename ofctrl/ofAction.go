@@ -79,11 +79,13 @@ func (a *OutputAction) GetActionType() string {
 }
 
 type ConnTrackAction struct {
-	Commit  bool
-	Force   bool
-	Table   *uint8
-	Zone    *uint16
-	Actions []openflow13.Action
+	Commit    bool
+	Force     bool
+	Table     *uint8
+	Zone      *uint16
+	ZoneField *openflow13.MatchField
+	ZoneRange *openflow13.NXRange
+	Actions   []openflow13.Action
 }
 
 func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, actions ...openflow13.Action) *ConnTrackAction {
@@ -94,6 +96,22 @@ func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, act
 		Zone:    zone,
 		Actions: actions,
 	}
+}
+
+func NewConntrackActionWitchZoneField(commit bool, force bool, table *uint8, zoneFieldName string, zoneRange *openflow13.NXRange,
+	actions ...openflow13.Action) (*ConnTrackAction, error) {
+	zoneFiled, err := openflow13.FindFieldHeaderByName(zoneFieldName, true)
+	if err != nil {
+		return nil, err
+	}
+	return &ConnTrackAction{
+		Commit:    commit,
+		Force:     force,
+		Table:     table,
+		ZoneField: zoneFiled,
+		ZoneRange: zoneRange,
+		Actions:   actions,
+	}, nil
 }
 
 func (a *ConnTrackAction) ToOfAction() (openflow13.Action, error) {
@@ -110,6 +128,9 @@ func (a *ConnTrackAction) ToOfAction() (openflow13.Action, error) {
 	}
 	if a.Zone != nil {
 		ctAction.ZoneImm(*a.Zone)
+	}
+	if a.ZoneField != nil && a.ZoneRange != nil {
+		ctAction.ZoneRange(a.ZoneField, a.ZoneRange)
 	}
 	if a.Actions != nil {
 		ctAction = ctAction.AddAction(a.Actions...)

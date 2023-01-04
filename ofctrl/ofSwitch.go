@@ -198,7 +198,7 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 
 		}
 	case *openflow13.ErrorMsg:
-		log.Errorf("Received ofp1.3 error msg: %+v", *t)
+		log.Errorf("Received ofp1.3 error msg: %+v, data: %s", *t, t.Data.String())
 	case *openflow13.VendorHeader:
 
 	case *openflow13.SwitchFeatures:

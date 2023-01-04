@@ -706,3 +706,24 @@ func TestSetGroup(t *testing.T) {
 	}
 	group.Delete()
 }
+
+func TestCTWithZoneFiled(t *testing.T) {
+	flow, _ := ofActor.inputTable.NewFlow(FlowMatch{
+		Priority:  100,
+		Ethertype: 0x0800,
+	})
+	var tableID uint8 = 1
+	ctAct, err := NewConntrackActionWitchZoneField(false, false, &tableID, "nxm_nx_reg0", openflow13.NewNXRange(0, 15))
+	if err != nil {
+		t.Errorf("new ct action failed: %v", err)
+	}
+	err = flow.SetConntrack(ctAct)
+	if err != nil {
+		t.Errorf("SetConntrack failed: %v", err)
+	}
+
+	if !ofctlDumpFlowMatch("ovsbr11", 0, "priority=100,ip", "ct(table=1,zone=NXM_NX_REG0[0..15])") {
+		t.Errorf("failed to install ct flow with zone filed")
+	}
+	flow.Delete()
+}
