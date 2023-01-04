@@ -25,6 +25,7 @@ const (
 	ActTypeNXLoad      = "loadAction"
 	ActTypeNXMove      = "moveAction"
 	ActTypeCT          = "ct"
+	ActTypeCTNAT       = "nat"
 	ActTypeNXResubmit  = "resubmitAction"
 	ActTypeGroup       = "groupAction"
 	ActTypeNXLearn     = "learnAction"
@@ -538,4 +539,102 @@ func (a *GroupAction) ToOfAction() (openflow13.Action, error) {
 
 func (a *GroupAction) GetActionType() string {
 	return ActTypeGroup
+}
+
+type PortRange struct {
+	portMin uint16
+	portMax uint16
+}
+
+func NewPortRange(portMin uint16, portMax ...uint16) *PortRange {
+	pr := &PortRange{
+		portMin: portMin,
+		portMax: portMin,
+	}
+	if len(portMax) > 0 {
+		pr.portMax = portMax[0]
+	}
+	return pr
+}
+
+type IPRange struct {
+	ipMin net.IP
+	ipMax net.IP
+}
+
+func NewIPRange(ipMin net.IP, ipMax ...net.IP) *IPRange {
+	ipR := &IPRange{
+		ipMin: ipMin,
+		ipMax: ipMin,
+	}
+	if len(ipMax) > 0 {
+		ipR.ipMax = ipMax[0]
+	}
+	return ipR
+}
+
+func (i *IPRange) IsIPv6() bool {
+	if i == nil {
+		return false
+	}
+	if i.ipMin == nil {
+		return false
+	}
+	return i.ipMin.To4() == nil
+}
+
+type NXCTNatAction struct {
+	isSNat    bool
+	isDnat    bool
+	portRange *PortRange
+	ipRange   *IPRange
+}
+
+func NewNatAction() *NXCTNatAction {
+	return &NXCTNatAction{}
+}
+
+func NewSNatAction(ipr *IPRange, pr *PortRange) *NXCTNatAction {
+	return &NXCTNatAction{
+		isSNat:    true,
+		ipRange:   ipr,
+		portRange: pr,
+	}
+}
+
+func NewDNatAction(ipr *IPRange, pr *PortRange) *NXCTNatAction {
+	return &NXCTNatAction{
+		isDnat:    true,
+		ipRange:   ipr,
+		portRange: pr,
+	}
+}
+
+func (n *NXCTNatAction) GetActionType() string {
+	return ActTypeCTNAT
+}
+
+func (n *NXCTNatAction) ToOfAction() (openflow13.Action, error) {
+	act := openflow13.NewNXActionCTNAT()
+	if n.isSNat {
+		act.SetSNAT()
+	}
+	if n.isDnat {
+		act.SetDNAT()
+	}
+	if n.ipRange != nil {
+		if n.ipRange.IsIPv6() {
+			act.SetRangeIPv6Min(n.ipRange.ipMin)
+			act.SetRangeIPv6Max(n.ipRange.ipMax)
+		} else {
+			act.SetRangeIPv4Min(n.ipRange.ipMin)
+			act.SetRangeIPv4Max(n.ipRange.ipMax)
+		}
+	}
+	if n.portRange != nil {
+		act.SetRangeProtoMin(&n.portRange.portMin)
+		act.SetRangeProtoMax(&n.portRange.portMax)
+	}
+
+	return act, nil
 }
