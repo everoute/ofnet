@@ -41,17 +41,11 @@ func NewOvsDriver(bridgeName string) *OvsDriver {
 	ovsDriver.OvsBridgeName = bridgeName
 	ovsDriver.ovsdbCache = make(map[string]map[string]libovsdb.Row)
 
-	go func() {
-		// Register for notifications
-		ovs.Register(ovsDriver)
+	// Register for notifications
+	ovs.Register(ovsDriver)
 
-		// Populate initial state into cache
-		initial, _ := ovs.MonitorAll("Open_vSwitch", "")
-		ovsDriver.populateCache(*initial)
-	}()
-
-	// HACK: sleep the main thread so that Cache can be populated
-	time.Sleep(1 * time.Second)
+	// Start monitor and Populate initial state into cache
+	_ = ovs.MonitorAll("Open_vSwitch", "")
 
 	// Create the default bridge instance
 	err = ovsDriver.CreateBridge(ovsDriver.OvsBridgeName)
@@ -77,29 +71,23 @@ func NewOvsDriverForExistBridge(bridgeName string) *OvsDriver {
 	ovsDriver.OvsBridgeName = bridgeName
 	ovsDriver.ovsdbCache = make(map[string]map[string]libovsdb.Row)
 
-	go func() {
-		// Register for notifications
-		ovs.Register(ovsDriver)
+	// Register for notifications
+	ovs.Register(ovsDriver)
 
-		selectAll := libovsdb.MonitorSelect{
-			Initial: true,
-			Insert:  true,
-			Delete:  true,
-			Modify:  true,
-		}
-		requests := map[string]libovsdb.MonitorRequest{
-			"Port":         {Select: selectAll, Columns: []string{"name"}},
-			"Bridge":       {Select: selectAll, Columns: []string{"name", "controller"}},
-			"Open_vSwitch": {Select: selectAll, Columns: []string{"ovs_version"}},
-		}
+	selectAll := libovsdb.MonitorSelect{
+		Initial: true,
+		Insert:  true,
+		Delete:  true,
+		Modify:  true,
+	}
+	requests := map[string]libovsdb.MonitorRequest{
+		"Port":         {Select: selectAll, Columns: []string{"name"}},
+		"Bridge":       {Select: selectAll, Columns: []string{"name", "controller"}},
+		"Open_vSwitch": {Select: selectAll, Columns: []string{"ovs_version"}},
+	}
 
-		// Populate initial state into cache
-		initial, _ := ovs.Monitor("Open_vSwitch", "", requests)
-		ovsDriver.populateCache(*initial)
-	}()
-
-	// HACK: sleep the main thread so that Cache can be populated
-	time.Sleep(1 * time.Second)
+	// Start monitor and Populate initial state into cache
+	_ = ovs.Monitor("Open_vSwitch", "", requests)
 
 	if !ovsDriver.IsBridgePresent(bridgeName) {
 		log.Fatalf("Ovs bridge: %v not exists, failed to create ovsdb dirver", bridgeName)
@@ -116,18 +104,6 @@ func (d *OvsDriver) Delete() error {
 		log.Infof("Deleting OVS bridge: %s", d.OvsBridgeName)
 		(*d.ovsClient).Disconnect()
 	}
-
-	return nil
-}
-
-func (d *OvsDriver) ReConnectOvsdb() error {
-	// connect to OVS
-	ovs, err := libovsdb.ConnectUnix("/var/run/openvswitch/db.sock")
-	if err != nil {
-		return fmt.Errorf("failed to connect to ovsdb. Err: %v", err)
-	}
-
-	d.ovsClient = ovs
 
 	return nil
 }
