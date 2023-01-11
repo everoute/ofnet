@@ -1,4 +1,5 @@
-/***
+/*
+**
 Copyright 2014 Cisco Systems Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
 	"github.com/contiv/ofnet/ovsdbDriver"
+	log "github.com/sirupsen/logrus"
 )
 
 type OfActor struct {
@@ -721,6 +722,9 @@ func TestCTWithZoneFiled(t *testing.T) {
 	if err != nil {
 		t.Errorf("SetConntrack failed: %v", err)
 	}
+	if err := flow.Next(NewEmptyElem()); err != nil {
+		t.Errorf("SetConntrack failed: %v", err)
+	}
 	if !ofctlDumpFlowMatch("ovsbr11", 0, "priority=100,ip", "ct(table=1,zone=NXM_NX_REG0[0..15])") {
 		t.Errorf("failed to install ct flow with zone filed")
 	}
@@ -738,6 +742,9 @@ func TestCTNatAction(t *testing.T) {
 	ctAct := NewConntrackAction(true, false, &tableID, &zone, natAct)
 	err := flow.SetConntrack(ctAct)
 	if err != nil {
+		t.Errorf("SetConntrack failed: %v", err)
+	}
+	if err := flow.Next(NewEmptyElem()); err != nil {
 		t.Errorf("SetConntrack failed: %v", err)
 	}
 
@@ -759,6 +766,9 @@ func TestCTdNatAction(t *testing.T) {
 	ctAct := NewConntrackAction(true, false, &tableID, &zone, natAct)
 	err := flow.SetConntrack(ctAct)
 	if err != nil {
+		t.Errorf("SetConntrack failed: %v", err)
+	}
+	if err := flow.Next(NewEmptyElem()); err != nil {
 		t.Errorf("SetConntrack failed: %v", err)
 	}
 
@@ -814,6 +824,9 @@ func TestAlg(t *testing.T) {
 	ctAct.SetAlg(21)
 	err := flow.SetConntrack(ctAct)
 	if err != nil {
+		t.Errorf("SetConntrack failed: %v", err)
+	}
+	if err := flow.Next(NewEmptyElem()); err != nil {
 		t.Errorf("SetConntrack failed: %v", err)
 	}
 	if !ofctlDumpFlowMatch("ovsbr11", 0, "priority=100,tcp,tp_dst=21", "ct(commit,table=1,zone=65510,alg=ftp") {

@@ -31,6 +31,7 @@ const (
 	ActTypeNXLearn     = "learnAction"
 	ActTypeController  = "controller"
 	ActTypeOutput      = "outputAction"
+	ActTypeDecNwTtl    = "DecNwTtl"
 )
 
 type Action interface {
@@ -150,11 +151,6 @@ func (a *ConnTrackAction) ToOfAction() (openflow13.Action, error) {
 
 func (a *ConnTrackAction) GetActionType() string {
 	return ActTypeCT
-}
-
-func (a *ConnTrackAction) installConntrackAction() openflow13.Action {
-	action, _ := a.ToOfAction()
-	return action
 }
 
 type PushVlanAction struct {
@@ -394,6 +390,7 @@ func (a *SetUDPDst) GetActionType() string {
 type ResubmitAction struct {
 	tableId uint8
 	inPort  uint16
+	prepend bool
 }
 
 func NewResubmitAction(inPort *uint16, table *uint8) *ResubmitAction {
@@ -577,9 +574,10 @@ func getLearnSpecWithField(header *openflow13.NXLearnSpecHeader, dstField *openf
 }
 
 type NXLoadAction struct {
-	Field *openflow13.MatchField
-	Value uint64
-	Range *openflow13.NXRange
+	Field    *openflow13.MatchField
+	Value    uint64
+	Range    *openflow13.NXRange
+	Appended bool
 }
 
 func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
@@ -592,6 +590,20 @@ func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRang
 		Field: field,
 		Range: dataRange,
 		Value: data,
+	}, nil
+}
+
+func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
+	field, err := openflow13.FindFieldHeaderByName(fieldName, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &NXLoadAction{
+		Field:    field,
+		Range:    dataRange,
+		Value:    data,
+		Appended: true,
 	}, nil
 }
 
@@ -751,4 +763,20 @@ func (n *NXCTNatAction) ToOfAction() (openflow13.Action, error) {
 	}
 
 	return act, nil
+}
+
+type DecTtlAction struct {
+	ActionType string
+}
+
+func (d *DecTtlAction) GetActionType() string {
+	return d.ActionType
+}
+
+func (d *DecTtlAction) ToOfAction() (openflow13.Action, error) {
+	return openflow13.NewActionDecNwTtl(), nil
+}
+
+func NewDecNwTtlAction(actionType string) *DecTtlAction {
+	return &DecTtlAction{ActionType: actionType}
 }

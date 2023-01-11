@@ -1,4 +1,5 @@
-/***
+/*
+**
 Copyright 2014 Cisco Systems Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +21,8 @@ import (
 	"errors"
 	"fmt"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/cookie"
 	"github.com/contiv/ofnet/ofctrl/dperror"

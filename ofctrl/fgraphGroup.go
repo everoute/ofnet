@@ -1,8 +1,8 @@
 package ofctrl
 
 import (
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
+	log "github.com/sirupsen/logrus"
 )
 
 type Group struct {

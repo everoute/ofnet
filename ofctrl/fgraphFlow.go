@@ -1,4 +1,5 @@
-/***
+/*
+**
 Copyright 2014 Cisco Systems Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,8 +25,8 @@ import (
 	"net"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/dperror"
 )
@@ -44,6 +45,8 @@ type FlowMatch struct {
 	ArpOper        uint16            // ARP Oper type
 	ArpTpa         *net.IP           // Arp Tpa (target IP)
 	ArpTpaMask     *net.IP           // Mask for Arp Tpa
+	ArpSpa         *net.IP           // Arp Spa (source IP)
+	ArpSpaMask     *net.IP           // Mask for Arp Spa
 	IpSa           *net.IP           // IPv4 source addr
 	IpSaMask       *net.IP           // IPv4 source mask
 	IpDa           *net.IP           // IPv4 dest addr
@@ -53,6 +56,8 @@ type FlowMatch struct {
 	Ipv6Da         *net.IP           // IPv6 dest addr
 	Ipv6DaMask     *net.IP           // IPv6 dest mask
 	IpProto        uint8             // IP protocol
+	IcmpCode       uint8             // ICMP code
+	IcmpType       uint8             // ICMP type
 	IpDscp         uint8             // DSCP/TOS field
 	TcpSrcPort     uint16            // TCP source port
 	TcpSrcPortMask uint16            // TCP source port mask
@@ -108,6 +113,12 @@ func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName,
 	if err != nil {
 		return err
 	}
+	if srcMatchFieldName == "nxm_nx_tun_metadata0" {
+		f.Table.Switch.ResetFieldLength(moveAct.SrcField)
+	}
+	if dstMatchFieldName == "nxm_nx_tun_metadata0" {
+		f.Table.Switch.ResetFieldLength(moveAct.DstField)
+	}
 
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -123,6 +134,28 @@ func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow13.NX
 	loadAct, err := NewNXLoadAction(fieldName, data, dataRange)
 	if err != nil {
 		return err
+	}
+	if fieldName == "nxm_nx_tun_metadata0" {
+		f.Table.Switch.ResetFieldLength(loadAct.Field)
+	}
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, loadAct)
+	if f.isInstalled {
+		return f.install()
+	}
+
+	return nil
+}
+
+func (f *Flow) AppendedLoadField(fieldName string, data uint64, dataRange *openflow13.NXRange) error {
+	loadAct, err := NewAppendedNXLoadAction(fieldName, data, dataRange)
+	if err != nil {
+		return err
+	}
+	if fieldName == "nxm_nx_tun_metadata0" {
+		f.Table.Switch.ResetFieldLength(loadAct.Field)
 	}
 
 	f.lock.Lock()
@@ -155,6 +188,15 @@ func (f *Flow) Learn(learnAction *LearnAction) error {
 	if f.isInstalled {
 		return f.install()
 	}
+
+	return nil
+}
+
+func (f *Flow) DecNwTtl() error {
+	action := NewDecNwTtlAction(ActTypeDecNwTtl)
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
 
 	return nil
 }
@@ -223,6 +265,17 @@ func AddArpTpaMask(field *openflow13.MatchField, arpTpaMask *net.IP) {
 	}
 }
 
+func AddArpSpaMask(field *openflow13.MatchField, arpSpaMask *net.IP) {
+	if arpSpaMask != nil {
+		mask := new(openflow13.ArpXPaField)
+		mask.ArpPa = *arpSpaMask
+
+		field.Mask = mask
+		field.HasMask = true
+		field.Length += uint8(mask.Len())
+	}
+}
+
 // Translate our match fields into openflow 1.3 match fields
 func (self *Flow) xlateMatch() openflow13.Match {
 	ofMatch := openflow13.NewMatch()
@@ -280,6 +333,12 @@ func (self *Flow) xlateMatch() openflow13.Match {
 		ofMatch.AddField(*arpTpaField)
 	}
 
+	if self.Match.ArpSpa != nil {
+		arpSpaField := openflow13.NewArpSpaField(*self.Match.ArpSpa)
+		AddArpSpaMask(arpSpaField, self.Match.ArpSpaMask)
+		ofMatch.AddField(*arpSpaField)
+	}
+
 	// Handle IP Dst
 	if self.Match.IpDa != nil {
 		if self.Match.IpDaMask != nil {
@@ -334,6 +393,16 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	if self.Match.IpDscp != 0 {
 		dscpField := openflow13.NewIpDscpField(self.Match.IpDscp)
 		ofMatch.AddField(*dscpField)
+	}
+
+	// icmp code and type
+	if self.Match.IcmpCode != 0 {
+		icmpCodeField := openflow13.NewIcmpCodeField(self.Match.IcmpCode)
+		ofMatch.AddField(*icmpCodeField)
+	}
+	if self.Match.IcmpType != 0 {
+		icmpTypeField := openflow13.NewIcmpTypeField(self.Match.IcmpType)
+		ofMatch.AddField(*icmpTypeField)
 	}
 
 	// Handle port numbers
@@ -458,11 +527,16 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 		case ActTypePopVlan, ActTypeSetDstMac, ActTypeSetSrcMac, ActTypeSetTunnelID, ActTypeSetSrcIP, ActTypeSetDstIP,
 			ActTypeSetDSCP, ActTypeSetTCPsPort, ActTypeSetTCPdPort, ActTypeSetUDPdPort, ActTypeSetUDPsPort, ActTypeNXLoad,
-			ActTypeNXMove, ActTypeNXLearn:
-			act, _ := flowAction.ToOfAction()
+			ActTypeNXMove, ActTypeNXLearn, ActTypeDecNwTtl:
 
+			var prepend bool = true
+			act, _ := flowAction.ToOfAction()
+			if flowAction.GetActionType() == ActTypeNXLoad && flowAction.(*NXLoadAction).Appended {
+				// prepend instruction to openflow act set
+				prepend = false
+			}
 			// Add it to instruction
-			err := actInstr.AddAction(act, true)
+			err := actInstr.AddAction(act, prepend)
 			if err != nil {
 				return err
 			}
@@ -470,7 +544,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 			log.Debugf("flow install. Added %s action: %+v", actType, act)
 
-		case ActTypeNXResubmit, ActTypeOutput, ActTypeController, ActTypeGroup:
+		case ActTypeNXResubmit, ActTypeOutput, ActTypeController, ActTypeGroup, ActTypeCT:
 			act, _ := flowAction.ToOfAction()
 			err := actInstr.AddAction(act, false)
 			if err != nil {
@@ -592,36 +666,7 @@ func (self *Flow) Next(elem FgraphElem) error {
 }
 
 func (self *Flow) SetConntrack(connTrackAction *ConnTrackAction) error {
-	self.lock.Lock()
-	defer self.lock.Unlock()
-
-	flowMod := openflow13.NewFlowMod()
-	flowMod.TableId = self.Table.TableId
-	flowMod.Priority = self.Match.Priority
-	flowMod.Cookie = self.FlowID
-	flowMod.CookieMask = uint64(0xffffffffffffffff)
-
-	if !self.isInstalled {
-		flowMod.Command = openflow13.FC_ADD
-	} else {
-		flowMod.Command = openflow13.FC_MODIFY
-	}
-
-	// convert match fields to openflow 1.3 format
-	flowMod.Match = self.xlateMatch()
-	log.Debugf("flow install: Match: %+v", flowMod.Match)
-
-	instr := openflow13.NewInstrApplyActions()
-	if instr != nil {
-		ctAction := connTrackAction.installConntrackAction()
-		instr.AddAction(ctAction, true)
-		flowMod.AddInstruction(instr)
-
-		log.Debugf("flow install: added output port instr: %+v", instr)
-	}
-
-	self.Table.Switch.Send(flowMod)
-	self.isInstalled = true
+	self.flowActions = append(self.flowActions, connTrackAction)
 
 	return nil
 }
