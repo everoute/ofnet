@@ -46,6 +46,8 @@ type OFSwitch struct {
 	ready           bool
 	retry           chan bool // Channel to notify controller reconnect switch
 	ControllerID    uint16
+
+	tlvMgr *tlvMapMgr
 }
 
 var switchDb cmap.ConcurrentMap
@@ -87,6 +89,7 @@ func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterfa
 	}
 
 	// send Switch connected callback
+	s.tlvMgr = newTLVMapMgr()
 	s.switchConnected()
 
 	// Return the new switch
@@ -200,6 +203,12 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 	case *openflow13.ErrorMsg:
 		log.Errorf("Received ofp1.3 error msg: %+v, data: %s", *t, t.Data.String())
 	case *openflow13.VendorHeader:
+		switch t.ExperimenterType {
+		case openflow13.Type_TlvTableReply:
+			reply := t.VendorData.(*openflow13.TLVTableReply)
+			status := TLVTableStatus(*reply)
+			self.tlvMgr.TLVMapReplyRcvd(self, &status)
+		}
 
 	case *openflow13.SwitchFeatures:
 		switch t.Header.Type {
