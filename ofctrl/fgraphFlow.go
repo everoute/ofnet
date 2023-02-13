@@ -69,6 +69,8 @@ type FlowMatch struct {
 	TcpFlagsMask   *uint16           // Mask for TCP flags
 
 	CtStates    *openflow13.CTStates
+	CTLabel     *[16]byte
+	CTLabelMask *[16]byte
 	PktMark     uint32 // NXM_NX_PKT_MARK field, in linux kernel, from skb_mark
 	PktMarkMask *uint32
 	Regs        []*NXRegister // NXM_NX_REGX[]
@@ -382,6 +384,11 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	if self.Match.CtStates != nil {
 		ctStateField := openflow13.NewCTStateMatchField(self.Match.CtStates)
 		ofMatch.AddField(*ctStateField)
+	}
+
+	if self.Match.CTLabel != nil {
+		ctLabelField := openflow13.NewCTLabelMatchField(*self.Match.CTLabel, self.Match.CTLabelMask)
+		ofMatch.AddField(*ctLabelField)
 	}
 
 	// pkt_mark match
