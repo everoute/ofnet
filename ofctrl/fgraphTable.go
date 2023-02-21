@@ -39,7 +39,6 @@ func (self *Table) Type() string {
 func (self *Table) GetFlowInstr() openflow13.Instruction {
 	return openflow13.NewInstrGotoTable(self.TableId)
 }
-
 // FIXME: global unique flow cookie
 var globalFlowID uint64 = 1
 
@@ -53,11 +52,11 @@ func (self *Table) NewFlow(match FlowMatch) (*Flow, error) {
 		return nil, dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
 	}
 	if self.Switch.CookieAllocator != nil {
-		flow.FlowID = self.Switch.CookieAllocator.RequestCookie(globalFlowID).RawId()
+		flow.FlowID = self.Switch.CookieAllocator.RequestCookie()
 	} else {
 		flow.FlowID = globalFlowID // FIXME: need a better id allocation
+		globalFlowID += 1
 	}
-	globalFlowID += 1
 	flow.flowActions = make([]Action, 0)
 
 	log.Debugf("Creating new flow for match: %+v", match)

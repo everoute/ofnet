@@ -27,20 +27,31 @@ func (i ID) Round() uint64 {
 }
 
 type Allocator interface {
-	RequestCookie(flowId uint64) ID
+	RequestCookie() uint64
+	SetFixedMask(uint64)
 }
 
 type allocator struct {
-	roundNum uint64
+	roundNum  uint64
+	flowID    uint64
+	fixedMask uint64
 }
 
-func (a *allocator) RequestCookie(flowId uint64) ID {
-	return newId(a.roundNum, flowId)
+// cookie will 'OR' fixed mask
+func (a *allocator) SetFixedMask(mask uint64) {
+	a.fixedMask = mask
+}
+
+func (a *allocator) RequestCookie() uint64 {
+	rawID := newId(a.roundNum, a.flowID).RawId()
+	a.flowID += 1
+	return rawID | a.fixedMask
 }
 
 func NewAllocator(roundNum uint64) Allocator {
 	a := &allocator{
 		roundNum: roundNum,
+		flowID:   1,
 	}
 	return a
 }

@@ -2,9 +2,6 @@ version: '3'
 
 services:
   test:
-    build:
-      context: $PWD
-      dockerfile: $PWD/build/images/Dockerfile.test.ubuntu
     image: ofnet/test
     working_dir: /go/src/ofnet
     command: make test

@@ -40,6 +40,7 @@ $(DOCKER_CACHE):
 
 docker-image:
 	@docker build -q -f build/images/Dockerfile.build.ubuntu -t ofnet/build .
+	@docker build -q -f build/images/Dockerfile.test.ubuntu -t ofnet/test .
 
 docker-build: $(DOCKER_CACHE) docker-image
 	$(DOCKER_ENV) make build
