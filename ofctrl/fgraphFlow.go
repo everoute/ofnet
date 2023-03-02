@@ -1,4 +1,5 @@
-/***
+/*
+**
 Copyright 2014 Cisco Systems Inc. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,6 +54,8 @@ type FlowMatch struct {
 	Ipv6Da         *net.IP           // IPv6 dest addr
 	Ipv6DaMask     *net.IP           // IPv6 dest mask
 	IpProto        uint8             // IP protocol
+	IcmpCode       uint8             // ICMP code
+	IcmpType       uint8             // ICMP type
 	IpDscp         uint8             // DSCP/TOS field
 	TcpSrcPort     uint16            // TCP source port
 	TcpSrcPortMask uint16            // TCP source port mask
@@ -334,6 +337,16 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	if self.Match.IpDscp != 0 {
 		dscpField := openflow13.NewIpDscpField(self.Match.IpDscp)
 		ofMatch.AddField(*dscpField)
+	}
+
+	// icmp code and type
+	if self.Match.IcmpCode != 0 {
+		icmpCodeField := openflow13.NewIcmpCodeField(self.Match.IcmpCode)
+		ofMatch.AddField(*icmpCodeField)
+	}
+	if self.Match.IcmpType != 0 {
+		icmpTypeField := openflow13.NewIcmpTypeField(self.Match.IcmpType)
+		ofMatch.AddField(*icmpTypeField)
 	}
 
 	// Handle port numbers
