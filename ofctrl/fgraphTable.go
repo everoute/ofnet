@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"github.com/contiv/libOpenflow/openflow13"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/ofnet/ofctrl/dperror"
+	log "github.com/sirupsen/logrus"
 )
 
 // Fgraph table element
@@ -40,6 +40,7 @@ func (self *Table) Type() string {
 func (self *Table) GetFlowInstr() openflow13.Instruction {
 	return openflow13.NewInstrGotoTable(self.TableId)
 }
+
 // FIXME: global unique flow cookie
 var globalFlowID uint64 = 1
 

@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
 	"github.com/contiv/ofnet/ovsdbDriver"
+	log "github.com/sirupsen/logrus"
 )
 
 type OfActor struct {

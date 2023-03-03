@@ -31,6 +31,7 @@ const (
 	ActTypeNXLearn     = "learnAction"
 	ActTypeController  = "controller"
 	ActTypeOutput      = "outputAction"
+	ActTypeDecNwTtl    = "DecNwTtl"
 )
 
 type Action interface {
@@ -743,4 +744,20 @@ func (n *NXCTNatAction) ToOfAction() (openflow13.Action, error) {
 	}
 
 	return act, nil
+}
+
+type DecTtlAction struct {
+	ActionType string
+}
+
+func (d *DecTtlAction) GetActionType() string {
+	return d.ActionType
+}
+
+func (d *DecTtlAction) ToOfAction() (openflow13.Action, error) {
+	return openflow13.NewActionDecNwTtl(), nil
+}
+
+func NewDecNwTtlAction(actionType string) *DecTtlAction {
+	return &DecTtlAction{ActionType: actionType}
 }

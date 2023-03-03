@@ -22,9 +22,9 @@ import (
 	"math/rand"
 	"net"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
 	"github.com/contiv/libOpenflow/protocol"
+	log "github.com/sirupsen/logrus"
 )
 
 type Range [2]uint32

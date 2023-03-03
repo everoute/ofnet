@@ -22,7 +22,7 @@ import (
 
 	"github.com/contiv/libOpenflow/openflow13"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // Flood Fgraph element

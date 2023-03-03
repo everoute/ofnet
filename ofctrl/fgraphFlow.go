@@ -25,8 +25,8 @@ import (
 	"net"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/contiv/libOpenflow/openflow13"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/dperror"
 )
@@ -158,6 +158,15 @@ func (f *Flow) Learn(learnAction *LearnAction) error {
 	if f.isInstalled {
 		return f.install()
 	}
+
+	return nil
+}
+
+func (f *Flow) DecNwTtl() error {
+	action := NewDecNwTtlAction(ActTypeDecNwTtl)
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.flowActions = append(f.flowActions, action)
 
 	return nil
 }
@@ -471,7 +480,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 		case ActTypePopVlan, ActTypeSetDstMac, ActTypeSetSrcMac, ActTypeSetTunnelID, ActTypeSetSrcIP, ActTypeSetDstIP,
 			ActTypeSetDSCP, ActTypeSetTCPsPort, ActTypeSetTCPdPort, ActTypeSetUDPdPort, ActTypeSetUDPsPort, ActTypeNXLoad,
-			ActTypeNXMove, ActTypeNXLearn:
+			ActTypeNXMove, ActTypeNXLearn, ActTypeDecNwTtl:
 			act, _ := flowAction.ToOfAction()
 
 			// Add it to instruction
