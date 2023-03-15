@@ -45,6 +45,8 @@ type FlowMatch struct {
 	ArpOper        uint16            // ARP Oper type
 	ArpTpa         *net.IP           // Arp Tpa (target IP)
 	ArpTpaMask     *net.IP           // Mask for Arp Tpa
+	ArpSpa         *net.IP           // Arp Spa (source IP)
+	ArpSpaMask     *net.IP           // Mask for Arp Spa
 	IpSa           *net.IP           // IPv4 source addr
 	IpSaMask       *net.IP           // IPv4 source mask
 	IpDa           *net.IP           // IPv4 dest addr
@@ -290,6 +292,12 @@ func (self *Flow) xlateMatch() openflow13.Match {
 		arpTpaField := openflow13.NewArpTpaField(*self.Match.ArpTpa)
 		AddArpTpaMask(arpTpaField, self.Match.ArpTpaMask)
 		ofMatch.AddField(*arpTpaField)
+	}
+
+	if self.Match.ArpSpa != nil {
+		arpSpaField := openflow13.NewArpTpaField(*self.Match.ArpSpa)
+		AddArpTpaMask(arpSpaField, self.Match.ArpSpaMask)
+		ofMatch.AddField(*arpSpaField)
 	}
 
 	// Handle IP Dst
