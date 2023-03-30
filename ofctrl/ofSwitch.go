@@ -123,7 +123,6 @@ func (self *OFSwitch) Disconnect() {
 
 // Handle switch connected event
 func (self *OFSwitch) switchConnected() {
-	self.app.SwitchConnected(self)
 
 	// Send new feature request
 	self.Send(openflow13.NewFeaturesRequest())
@@ -131,6 +130,8 @@ func (self *OFSwitch) switchConnected() {
 	// FIXME: This is too fragile. Create a periodic timer
 	// Start the periodic echo request loop
 	self.Send(openflow13.NewEchoRequest())
+	self.requestTlvMap()
+	self.app.SwitchConnected(self)
 }
 
 // Handle switch disconnected event

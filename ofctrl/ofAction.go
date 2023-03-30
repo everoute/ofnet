@@ -145,10 +145,10 @@ func (a *ConnTrackAction) GetActionType() string {
 	return ActTypeCT
 }
 
-func (a *ConnTrackAction) installConntrackAction() openflow13.Action {
-	action, _ := a.ToOfAction()
-	return action
-}
+// func (a *ConnTrackAction) installConntrackAction() openflow13.Action {
+// 	action, _ := a.ToOfAction()
+// 	return action
+// }
 
 type PushVlanAction struct {
 	etherType uint16

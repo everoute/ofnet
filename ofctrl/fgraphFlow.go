@@ -492,7 +492,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 			act, _ := flowAction.ToOfAction()
 
 			// Add it to instruction
-			err := actInstr.AddAction(act, true)
+			err := actInstr.AddAction(act, false)
 			if err != nil {
 				return err
 			}
@@ -500,7 +500,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 			log.Debugf("flow install. Added %s action: %+v", actType, act)
 
-		case ActTypeNXResubmit, ActTypeOutput, ActTypeController, ActTypeGroup:
+		case ActTypeNXResubmit, ActTypeOutput, ActTypeController, ActTypeGroup, ActTypeCT:
 			act, _ := flowAction.ToOfAction()
 			err := actInstr.AddAction(act, false)
 			if err != nil {
@@ -621,37 +621,43 @@ func (self *Flow) Next(elem FgraphElem) error {
 	return self.install()
 }
 
+// func (self *Flow) SetConntrack(connTrackAction *ConnTrackAction) error {
+// 	self.lock.Lock()
+// 	defer self.lock.Unlock()
+//
+// 	flowMod := openflow13.NewFlowMod()
+// 	flowMod.TableId = self.Table.TableId
+// 	flowMod.Priority = self.Match.Priority
+// 	flowMod.Cookie = self.FlowID
+// 	flowMod.CookieMask = uint64(0xffffffffffffffff)
+//
+// 	if !self.isInstalled {
+// 		flowMod.Command = openflow13.FC_ADD
+// 	} else {
+// 		flowMod.Command = openflow13.FC_MODIFY
+// 	}
+//
+// 	// convert match fields to openflow 1.3 format
+// 	flowMod.Match = self.xlateMatch()
+// 	log.Debugf("flow install: Match: %+v", flowMod.Match)
+//
+// 	instr := openflow13.NewInstrApplyActions()
+// 	if instr != nil {
+// ctAction := connTrackAction.installConntrackAction()
+// 		instr.AddAction(ctAction, true)
+// 		flowMod.AddInstruction(instr)
+//
+// 		log.Debugf("flow install: added output port instr: %+v", instr)
+// 	}
+//
+// 	self.Table.Switch.Send(flowMod)
+// 	self.isInstalled = true
+//
+// 	return nil
+// }
+
 func (self *Flow) SetConntrack(connTrackAction *ConnTrackAction) error {
-	self.lock.Lock()
-	defer self.lock.Unlock()
-
-	flowMod := openflow13.NewFlowMod()
-	flowMod.TableId = self.Table.TableId
-	flowMod.Priority = self.Match.Priority
-	flowMod.Cookie = self.FlowID
-	flowMod.CookieMask = uint64(0xffffffffffffffff)
-
-	if !self.isInstalled {
-		flowMod.Command = openflow13.FC_ADD
-	} else {
-		flowMod.Command = openflow13.FC_MODIFY
-	}
-
-	// convert match fields to openflow 1.3 format
-	flowMod.Match = self.xlateMatch()
-	log.Debugf("flow install: Match: %+v", flowMod.Match)
-
-	instr := openflow13.NewInstrApplyActions()
-	if instr != nil {
-		ctAction := connTrackAction.installConntrackAction()
-		instr.AddAction(ctAction, true)
-		flowMod.AddInstruction(instr)
-
-		log.Debugf("flow install: added output port instr: %+v", instr)
-	}
-
-	self.Table.Switch.Send(flowMod)
-	self.isInstalled = true
+	self.flowActions = append(self.flowActions, connTrackAction)
 
 	return nil
 }
