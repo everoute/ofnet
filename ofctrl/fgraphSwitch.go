@@ -151,6 +151,23 @@ func (self *OFSwitch) OutputPort(portNo uint32) (*Output, error) {
 	return output, nil
 }
 
+// Return a output graph element for the port reg
+func (self *OFSwitch) OutputPortReg(regName string, offset uint16) (_ *Output, err error) {
+	self.portMux.Lock()
+	defer self.portMux.Unlock()
+
+	// Create a new output element
+	output := new(Output)
+	output.outputType = "reg"
+	output.offset = offset<<6 + 15
+	output.regField, err = openflow13.FindFieldHeaderByName(regName, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
 // Return the drop graph element
 func (self *OFSwitch) DropAction() *Output {
 	return self.dropAction

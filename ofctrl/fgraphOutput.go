@@ -22,8 +22,13 @@ import (
 )
 
 type Output struct {
-	outputType string // Output type: "drop", "toController" or "port"
-	portNo     uint32 // Output port number
+	outputType string                 // Output type: "drop", "toController", "port" or "reg"
+	portNo     uint32                 // Output port number
+	regField   *openflow13.MatchField // Output reg filed
+	offset     uint16                 // Output reg offset
+	// 10 + 6
+	// 10 bits for offset, and 6 bits for length - 1
+	// ofport has 16 bits, here is 15 for length
 }
 
 // Fgraph element type for the output
@@ -48,6 +53,9 @@ func (self *Output) GetFlowInstr() openflow13.Instruction {
 	case "port":
 		outputAct := openflow13.NewActionOutput(self.portNo)
 		outputInstr.AddAction(outputAct, false)
+	case "reg":
+		outputAct := openflow13.NewOutputFromField(self.regField, self.offset)
+		outputInstr.AddAction(outputAct, false)
 	}
 
 	return outputInstr
@@ -68,6 +76,8 @@ func (self *Output) GetOutAction() openflow13.Action {
 		fallthrough
 	case "port":
 		return openflow13.NewActionOutput(self.portNo)
+	case "reg":
+		return openflow13.NewOutputFromField(self.regField, self.offset)
 	}
 
 	return nil
