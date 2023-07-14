@@ -79,6 +79,8 @@ type FlowMatch struct {
 	PktMark     uint32 // NXM_NX_PKT_MARK field, in linux kernel, from skb_mark
 	PktMarkMask *uint32
 	Regs        []*NXRegister // NXM_NX_REGX[]
+
+	RawMatchField []*openflow13.MatchField
 }
 
 // NXM_NX_REGX (X in 0~15) register match field
@@ -478,6 +480,12 @@ func (self *Flow) xlateMatch() openflow13.Match {
 		for _, reg := range self.Match.Regs {
 			registerField := openflow13.NewRegMatchField(reg.RegID, reg.Data, reg.Range)
 			ofMatch.AddField(*registerField)
+		}
+	}
+
+	if self.Match.RawMatchField != nil {
+		for _, match := range self.Match.RawMatchField {
+			ofMatch.AddField(*match)
 		}
 	}
 
