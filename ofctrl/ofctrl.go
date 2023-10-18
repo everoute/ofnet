@@ -354,6 +354,15 @@ func (m datapathIDMutateAPP) PacketRcvd(*OFSwitch, *PacketIn)                   
 func (m datapathIDMutateAPP) MultipartReply(*OFSwitch, *openflow13.MultipartReply) {}
 
 func setDatapathID(conn *ovsdb.OvsdbClient, bridgeName string, datapathID []byte) error {
+	if conn == nil {
+		var err error
+		conn, err = ovsdb.ConnectUnix(ovsdb.DEFAULT_SOCK)
+		if err != nil {
+			return fmt.Errorf("connect to ovsdb: %s", err)
+		}
+		defer conn.Disconnect()
+	}
+
 	if hex.EncodedLen(len(datapathID)) != 16 {
 		return fmt.Errorf("invalid datapath id: %s", hex.EncodeToString(datapathID))
 	}
