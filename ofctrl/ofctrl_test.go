@@ -18,6 +18,7 @@ package ofctrl
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -849,4 +850,29 @@ func TestSetTunndelDst(t *testing.T) {
 		t.Errorf("failed to install ct flow with set tunnel dst ip action")
 	}
 	flow.Delete()
+}
+
+func TestNewOFController(t *testing.T) {
+	bridgeName := fmt.Sprintf("brtest-%d", rand.Intn(10))
+
+	driver := ovsdbDriver.NewOvsDriver(bridgeName)
+	defer driver.Delete()
+
+	c := NewOFController(&ofActor, uint16(rand.Intn(1024)), driver.OVSClient(), bridgeName)
+	go c.Connect(fmt.Sprintf("/var/run/openvswitch/%s.mgmt", bridgeName))
+
+	//wait for 10sec and see if switch connects
+	time.Sleep(10 * time.Second)
+	if !ofActor.isSwitchConnected {
+		t.Fatalf("%s switch did not connect within 10sec", bridgeName)
+	}
+
+	config, err := driver.GetOtherConfig()
+	if err != nil {
+		t.Fatalf("unable get other config: %s", err)
+	}
+
+	if config["datapath-id"] == "" {
+		t.Fatalf("datapath id must be set on switch connected")
+	}
 }

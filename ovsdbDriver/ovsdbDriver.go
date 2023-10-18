@@ -97,6 +97,10 @@ func NewOvsDriverForExistBridge(bridgeName string) *OvsDriver {
 	return ovsDriver
 }
 
+func (d *OvsDriver) OVSClient() *libovsdb.OvsdbClient {
+	return d.ovsClient
+}
+
 // Delete : Cleanup the ovsdb driver. delete the bridge we created.
 func (d *OvsDriver) Delete() error {
 	if d.ovsClient != nil {
@@ -316,6 +320,27 @@ func (self *OvsDriver) GetExternalIds() (map[string]string, error) {
 		return map[string]string{}, nil
 	}
 	externalIds := ovsBridgeExternalids[0].Rows[0]["external_ids"].([]interface{})
+
+	return buildMapFromOVSDBMap(externalIds), nil
+}
+
+func (self *OvsDriver) GetOtherConfig() (map[string]string, error) {
+	selectOper := libovsdb.Operation{
+		Op:      "select",
+		Table:   "Bridge",
+		Where:   []interface{}{[]interface{}{"name", "==", self.OvsBridgeName}},
+		Columns: []string{"other_config"},
+	}
+
+	opers := []libovsdb.Operation{selectOper}
+	ovsBridgeExternalids, err := self.ovsClient.Transact("Open_vSwitch", opers...)
+	if err != nil {
+		return nil, fmt.Errorf("ovsdb select other_config transaction failed: %v", opers)
+	}
+	if len(ovsBridgeExternalids[0].Rows) == 0 {
+		return map[string]string{}, nil
+	}
+	externalIds := ovsBridgeExternalids[0].Rows[0]["other_config"].([]interface{})
 
 	return buildMapFromOVSDBMap(externalIds), nil
 }
