@@ -1,5 +1,9 @@
 package cookie
 
+import (
+	"sync"
+)
+
 const (
 	BitWidthReserved        = 32
 	BitWidthRoundNum        = 4
@@ -32,9 +36,10 @@ type Allocator interface {
 }
 
 type allocator struct {
-	roundNum  uint64
-	flowID    uint64
-	fixedMask uint64
+	roundNum   uint64
+	flowID     uint64
+	fixedMask  uint64
+	flowIDLock sync.RWMutex
 }
 
 // cookie will 'OR' fixed mask
@@ -43,6 +48,9 @@ func (a *allocator) SetFixedMask(mask uint64) {
 }
 
 func (a *allocator) RequestCookie() uint64 {
+	a.flowIDLock.Lock()
+	defer a.flowIDLock.Unlock()
+
 	rawID := newId(a.roundNum, a.flowID).RawId()
 	a.flowID += 1
 	return rawID | a.fixedMask
@@ -50,8 +58,9 @@ func (a *allocator) RequestCookie() uint64 {
 
 func NewAllocator(roundNum uint64) Allocator {
 	a := &allocator{
-		roundNum: roundNum,
-		flowID:   1,
+		roundNum:   roundNum,
+		flowID:     1,
+		flowIDLock: sync.RWMutex{},
 	}
 	return a
 }
