@@ -73,6 +73,9 @@ type FlowMatch struct {
 	TcpFlags       *uint16           // TCP flags
 	TcpFlagsMask   *uint16           // Mask for TCP flags
 
+	IdleTimeout uint16
+	HardTimeout uint16
+
 	CtStates    *openflow13.CTStates
 	CTLabel     *[16]byte
 	CTLabelMask *[16]byte
@@ -582,6 +585,8 @@ func (self *Flow) install() error {
 	flowMod := openflow13.NewFlowMod()
 	flowMod.TableId = self.Table.TableId
 	flowMod.Priority = self.Match.Priority
+	flowMod.IdleTimeout = self.Match.IdleTimeout
+	flowMod.HardTimeout = self.Match.HardTimeout
 	flowMod.Cookie = self.FlowID
 	flowMod.CookieMask = uint64(0xffffffffffffffff)
 
