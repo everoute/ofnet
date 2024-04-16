@@ -538,7 +538,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 
 		case ActTypePopVlan, ActTypeSetDstMac, ActTypeSetSrcMac, ActTypeSetTunnelID, ActTypeSetSrcIP, ActTypeSetDstIP,
 			ActTypeSetDSCP, ActTypeSetTCPsPort, ActTypeSetTCPdPort, ActTypeSetUDPdPort, ActTypeSetUDPsPort, ActTypeNXLoad,
-			ActTypeNXMove, ActTypeNXLearn, ActTypeDecNwTtl, ActTypeSetTunnelDstIP:
+			ActTypeNXMove, ActTypeNXLearn, ActTypeDecNwTtl, ActTypeSetTunnelDstIP, ActTypeCTClear:
 
 			var prepend bool = true
 			act, _ := flowAction.ToOfAction()
@@ -705,6 +705,24 @@ func (self *Flow) SetVlan(vlanId uint16) error {
 // Special actions on the flow to set vlan id
 func (self *Flow) PopVlan() error {
 	action := NewPopVlanAction()
+
+	self.lock.Lock()
+	defer self.lock.Unlock()
+
+	// Add to the action db
+	self.flowActions = append(self.flowActions, action)
+
+	// If the flow entry was already installed, re-install it
+	if self.isInstalled {
+		self.install()
+	}
+
+	return nil
+}
+
+// Special actions on the flow to clear ct state
+func (self *Flow) CTClear() error {
+	action := NewCTClearAction()
 
 	self.lock.Lock()
 	defer self.lock.Unlock()

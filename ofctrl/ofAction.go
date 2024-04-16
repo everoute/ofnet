@@ -26,6 +26,7 @@ const (
 	ActTypeNXLoad         = "loadAction"
 	ActTypeNXMove         = "moveAction"
 	ActTypeCT             = "ct"
+	ActTypeCTClear        = "ctClear"
 	ActTypeCTNAT          = "nat"
 	ActTypeNXResubmit     = "resubmitAction"
 	ActTypeGroup          = "groupAction"
@@ -79,6 +80,20 @@ func (a *OutputAction) ToOfAction() (openflow13.Action, error) {
 
 func (a *OutputAction) GetActionType() string {
 	return ActTypeOutput
+}
+
+type CTClearAction struct{}
+
+func NewCTClearAction() *CTClearAction {
+	return &CTClearAction{}
+}
+
+func (a *CTClearAction) ToOfAction() (openflow13.Action, error) {
+	return openflow13.NewNXActionCTClear(), nil
+}
+
+func (a *CTClearAction) GetActionType() string {
+	return ActTypeCTClear
 }
 
 type ConnTrackAction struct {

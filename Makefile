@@ -39,8 +39,8 @@ $(DOCKER_CACHE):
 	@mkdir -p $@/gocache
 
 docker-image:
-	@docker build -q -f build/images/Dockerfile.build.ubuntu -t ofnet/build .
-	@docker build -q -f build/images/Dockerfile.test.ubuntu -t ofnet/test .
+	@docker build -f build/images/Dockerfile.build.ubuntu -t ofnet/build . --load
+	@docker build -f build/images/Dockerfile.test.ubuntu -t ofnet/test .  --load
 
 docker-build: $(DOCKER_CACHE) docker-image
 	$(DOCKER_ENV) make build
