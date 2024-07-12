@@ -68,6 +68,8 @@ type AppInterface interface {
 	MultipartReply(sw *OFSwitch, rep *openflow13.MultipartReply)
 }
 
+type Option func(opt *options)
+
 type Controller struct {
 	app          AppInterface
 	listener     *net.TCPListener
@@ -76,10 +78,22 @@ type Controller struct {
 	stopChan     chan bool
 	DisconnChan  chan bool
 	controllerID uint16
+
+	optionConfig *options
+}
+
+type options struct {
+	disableCleanGroup bool
+}
+
+func DisableCleanGroup() Option {
+	return func(opt *options) {
+		opt.disableCleanGroup = true
+	}
 }
 
 // Create a new controller
-func NewController(app AppInterface) *Controller {
+func NewController(app AppInterface, opts ...Option) *Controller {
 	c := new(Controller)
 	c.connectMode = ServerMode
 
@@ -88,11 +102,16 @@ func NewController(app AppInterface) *Controller {
 
 	// Save the handler
 	c.app = app
+
+	c.optionConfig = &options{}
+	for _, opt := range opts {
+		opt(c.optionConfig)
+	}
 	return c
 }
 
 // Create a new controller
-func NewControllerAsOFClient(app AppInterface, controllerID uint16) *Controller {
+func NewControllerAsOFClient(app AppInterface, controllerID uint16, opts ...Option) *Controller {
 	c := new(Controller)
 	c.connectMode = ClientMode
 	// Construct stop flag
@@ -100,6 +119,11 @@ func NewControllerAsOFClient(app AppInterface, controllerID uint16) *Controller 
 	c.DisconnChan = make(chan bool)
 	c.app = app
 	c.controllerID = controllerID
+
+	c.optionConfig = &options{}
+	for _, opt := range opts {
+		opt(c.optionConfig)
+	}
 
 	return c
 }
@@ -255,7 +279,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 				if c.connectMode == ClientMode {
 					reConnChan = c.DisconnChan
 				}
-				NewSwitch(stream, m.DPID, c.app, reConnChan, c.controllerID)
+				NewSwitch(stream, m.DPID, c.app, reConnChan, c.controllerID, c.optionConfig.disableCleanGroup)
 
 				// Let switch instance handle all future messages..
 				return
@@ -292,12 +316,12 @@ func (c *Controller) GetListenPort() int {
 	return c.listener.Addr().(*net.TCPAddr).Port
 }
 
-func NewOFController(app AppInterface, controllerID uint16, conn *ovsdb.OvsdbClient, bridgeName string) *Controller {
+func NewOFController(app AppInterface, controllerID uint16, conn *ovsdb.OvsdbClient, bridgeName string, opts ...Option) *Controller {
 	multipleApp := multipleAppInterface{apps: []AppInterface{
 		app,
 		datapathIDMutateAPP{conn: conn, bridgeName: bridgeName},
 	}}
-	return NewControllerAsOFClient(multipleApp, controllerID)
+	return NewControllerAsOFClient(multipleApp, controllerID, opts...)
 }
 
 type multipleAppInterface struct {

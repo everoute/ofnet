@@ -50,6 +50,8 @@ type OFSwitch struct {
 	ControllerID    uint16
 
 	tlvMgr *tlvMapMgr
+
+	disableCleanGroup bool
 }
 
 var switchDb cmap.ConcurrentMap
@@ -60,7 +62,7 @@ func init() {
 
 // Builds and populates a Switch struct then starts listening
 // for OpenFlow messages on conn.
-func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, retryChan chan bool, id uint16) *OFSwitch {
+func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, retryChan chan bool, id uint16, disableCleanGroup bool) *OFSwitch {
 	var s *OFSwitch
 
 	if getSwitch(dpid) == nil {
@@ -72,6 +74,7 @@ func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterfa
 		s.dpid = dpid
 		s.retry = retryChan
 		s.ControllerID = id
+		s.disableCleanGroup = disableCleanGroup
 
 		// Initialize the fgraph elements
 		s.initFgraph()

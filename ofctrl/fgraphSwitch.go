@@ -59,6 +59,9 @@ func (self *OFSwitch) initFgraph() error {
 	normalLookup.portNo = openflow13.P_NORMAL
 	self.normalLookup = normalLookup
 
+	if self.disableCleanGroup {
+		return nil
+	}
 	// Clear all existing flood lists
 	groupMod := openflow13.NewGroupMod()
 	groupMod.GroupId = openflow13.OFPG_ALL
