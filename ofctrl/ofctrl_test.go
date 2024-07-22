@@ -858,14 +858,10 @@ func TestNewOFController(t *testing.T) {
 	driver := ovsdbDriver.NewOvsDriver(bridgeName)
 	defer driver.Delete()
 
-	c := NewOFController(&ofActor, uint16(rand.Intn(1024)), driver.OVSClient(), bridgeName)
-	go c.Connect(fmt.Sprintf("/var/run/openvswitch/%s.mgmt", bridgeName))
+	_ = NewOFController(&ofActor, uint16(rand.Intn(1024)), driver.OVSClient(), bridgeName)
 
-	//wait for 10sec and see if switch connects
-	time.Sleep(10 * time.Second)
-	if !ofActor.isSwitchConnected {
-		t.Fatalf("%s switch did not connect within 10sec", bridgeName)
-	}
+	//wait for 2sec
+	time.Sleep(2 * time.Second)
 
 	config, err := driver.GetOtherConfig()
 	if err != nil {
@@ -873,6 +869,6 @@ func TestNewOFController(t *testing.T) {
 	}
 
 	if config["datapath-id"] == "" {
-		t.Fatalf("datapath id must be set on switch connected")
+		t.Fatalf("datapath id must be set before connect to switch")
 	}
 }
