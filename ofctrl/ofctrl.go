@@ -18,6 +18,7 @@ package ofctrl
 // This library implements a simple openflow 1.3 controller
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -317,62 +318,13 @@ func (c *Controller) GetListenPort() int {
 }
 
 func NewOFController(app AppInterface, controllerID uint16, conn *ovsdb.OvsdbClient, bridgeName string, opts ...Option) *Controller {
-	multipleApp := multipleAppInterface{apps: []AppInterface{
-		app,
-		datapathIDMutateAPP{conn: conn, bridgeName: bridgeName},
-	}}
-	return NewControllerAsOFClient(multipleApp, controllerID, opts...)
-}
-
-type multipleAppInterface struct {
-	apps []AppInterface
-}
-
-func (m multipleAppInterface) SwitchConnected(sw *OFSwitch) {
-	for _, app := range m.apps {
-		app.SwitchConnected(sw)
+	if err := setDatapathID(conn, bridgeName); err != nil {
+		log.Errorf("fail to set datapath id for bridge %s, errors = %s", bridgeName, err)
 	}
+	return NewControllerAsOFClient(app, controllerID, opts...)
 }
 
-func (m multipleAppInterface) SwitchDisconnected(sw *OFSwitch) {
-	for _, app := range m.apps {
-		app.SwitchDisconnected(sw)
-	}
-}
-
-func (m multipleAppInterface) PacketRcvd(sw *OFSwitch, pkt *PacketIn) {
-	for _, app := range m.apps {
-		app.PacketRcvd(sw, pkt)
-	}
-}
-
-func (m multipleAppInterface) MultipartReply(sw *OFSwitch, rep *openflow13.MultipartReply) {
-	for _, app := range m.apps {
-		app.MultipartReply(sw, rep)
-	}
-}
-
-type datapathIDMutateAPP struct {
-	conn       *ovsdb.OvsdbClient
-	bridgeName string
-}
-
-func (m datapathIDMutateAPP) SwitchConnected(sw *OFSwitch) {
-	err := setDatapathID(m.conn, m.bridgeName, sw.DPID())
-	if err != nil {
-		// the error is not fatal
-		// logs the error when unable set datapath id
-		log.Warningf("unable set datapath id %s: %s", hex.EncodeToString(sw.DPID()), err)
-		return
-	}
-	log.Infof("bridge %s datapath id has been set to %s", m.bridgeName, hex.EncodeToString(sw.DPID()))
-}
-
-func (m datapathIDMutateAPP) SwitchDisconnected(*OFSwitch)                         {}
-func (m datapathIDMutateAPP) PacketRcvd(*OFSwitch, *PacketIn)                      {}
-func (m datapathIDMutateAPP) MultipartReply(*OFSwitch, *openflow13.MultipartReply) {}
-
-func setDatapathID(conn *ovsdb.OvsdbClient, bridgeName string, datapathID []byte) error {
+func setDatapathID(conn *ovsdb.OvsdbClient, bridgeName string) error {
 	if conn == nil {
 		var err error
 		conn, err = ovsdb.ConnectUnix(ovsdb.DEFAULT_SOCK)
@@ -382,9 +334,9 @@ func setDatapathID(conn *ovsdb.OvsdbClient, bridgeName string, datapathID []byte
 		defer conn.Disconnect()
 	}
 
-	if hex.EncodedLen(len(datapathID)) != 16 {
-		return fmt.Errorf("invalid datapath id: %s", hex.EncodeToString(datapathID))
-	}
+	h := sha256.New()
+	h.Write([]byte(bridgeName))
+	datapathID := h.Sum(nil)[:8]
 
 	config, _ := ovsdb.NewOvsMap(map[string]string{"datapath-id": hex.EncodeToString(datapathID)})
 	operation := ovsdb.Operation{
@@ -393,8 +345,9 @@ func setDatapathID(conn *ovsdb.OvsdbClient, bridgeName string, datapathID []byte
 		Where:     []interface{}{[]interface{}{"name", "==", bridgeName}},
 		Mutations: []interface{}{[]interface{}{"other_config", "insert", config}}, // never update the datapath id
 	}
-
 	_, err := ovsdbTransact(conn, "Open_vSwitch", operation)
+
+	log.Infof("bridge %s datapath id has been set to %s", bridgeName, hex.EncodeToString(datapathID))
 	return err
 }
 
