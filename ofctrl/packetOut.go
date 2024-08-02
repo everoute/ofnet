@@ -226,6 +226,7 @@ func (p *PacketOut) setICMPData() {
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint16(data, 0)
 	binary.BigEndian.PutUint16(data[2:], 0)
+	data = append(data, p.Header.ICMPHeader.Data...)
 	p.Header.ICMPHeader.Data = data
 }
 
