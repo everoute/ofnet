@@ -17,14 +17,13 @@ package ofctrl
 
 import (
 	"net"
-	"sync"
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
 	"github.com/contiv/libOpenflow/openflow13"
 	"github.com/contiv/libOpenflow/util"
 
-	cmap "github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/cookie"
@@ -35,14 +34,12 @@ type OFSwitch struct {
 	dpid   net.HardwareAddr
 	app    AppInterface
 	// Following are fgraph state for the switch
-	tableDb      map[uint8]*Table
-	groupDb      map[uint32]*Group
-	groupLock    sync.Mutex
+	tableDb      cmap.ConcurrentMap[uint8, *Table]
+	groupDb      cmap.ConcurrentMap[uint32, *Group]
 	dropAction   *Output
 	sendToCtrler *Output
 	normalLookup *Output
-	portMux      sync.Mutex
-	outputPorts  map[uint32]*Output
+	outputPorts  cmap.ConcurrentMap[uint32, *Output]
 
 	CookieAllocator cookie.Allocator
 	ready           bool
@@ -54,10 +51,10 @@ type OFSwitch struct {
 	disableCleanGroup bool
 }
 
-var switchDb cmap.ConcurrentMap
+var switchDb cmap.ConcurrentMap[string, *OFSwitch]
 
 func init() {
-	switchDb = cmap.New()
+	switchDb = cmap.New[*OFSwitch]()
 }
 
 // Builds and populates a Switch struct then starts listening
@@ -107,7 +104,7 @@ func getSwitch(dpid net.HardwareAddr) *OFSwitch {
 	if sw == nil {
 		return nil
 	}
-	return sw.(*OFSwitch)
+	return sw
 }
 
 // Returns the dpid of Switch s.

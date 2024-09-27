@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/contiv/libOpenflow/openflow13"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/cookie"
@@ -31,15 +32,15 @@ import (
 // Initialize the fgraph elements on the switch
 func (self *OFSwitch) initFgraph() error {
 	// Create the DBs
-	self.tableDb = make(map[uint8]*Table)
-	self.outputPorts = make(map[uint32]*Output)
-	self.groupDb = make(map[uint32]*Group)
+	self.tableDb = cmap.NewWithCustomShardingFunction[uint8, *Table](func(key uint8) uint32 { return uint32(key) })
+	self.outputPorts = cmap.NewWithCustomShardingFunction[uint32, *Output](func(key uint32) uint32 { return key })
+	self.groupDb = cmap.NewWithCustomShardingFunction[uint32, *Group](func(key uint32) uint32 { return key })
 
 	// Create the table 0
 	table := new(Table)
 	table.Switch = self
 	table.TableId = 0
-	self.tableDb[0] = table
+	self.tableDb.Set(0, table)
 
 	// Create drop action
 	dropAction := new(Output)
@@ -80,7 +81,7 @@ func (self *OFSwitch) NewTable(tableId uint8) (*Table, error) {
 	}
 
 	// check if the table already exists
-	if self.tableDb[tableId] != nil {
+	if self.tableDb.Has(tableId) {
 		return nil, errors.New("Table already exists")
 	}
 
@@ -89,7 +90,7 @@ func (self *OFSwitch) NewTable(tableId uint8) (*Table, error) {
 	table.Switch = self
 	table.TableId = tableId
 	// Save it in the DB
-	self.tableDb[tableId] = table
+	self.tableDb.Set(tableId, table)
 
 	return table, nil
 }
@@ -104,7 +105,7 @@ func (self *OFSwitch) DeleteSpecTableFlows(tableId uint8, priority *uint16, ofMa
 		flowMod.Match.AddField(*field)
 	}
 	if priority == nil {
-		delete(self.tableDb, tableId)
+		self.tableDb.Remove(tableId)
 		flowMod.Command = openflow13.FC_DELETE
 		flowMod.OutPort = openflow13.P_ANY
 		flowMod.OutGroup = openflow13.OFPG_ANY
@@ -126,20 +127,19 @@ func (self *OFSwitch) DeleteSpecTableFlows(tableId uint8, priority *uint16, ofMa
 
 // GetTable Returns a table
 func (self *OFSwitch) GetTable(tableId uint8) *Table {
-	return self.tableDb[tableId]
+	t, _ := self.tableDb.Get(tableId)
+	return t
 }
 
 // Return table 0 which is the starting table for all packets
 func (self *OFSwitch) DefaultTable() *Table {
-	return self.tableDb[0]
+	t, _ := self.tableDb.Get(0)
+	return t
 }
 
 // Return a output graph element for the port
 func (self *OFSwitch) OutputPort(portNo uint32) (*Output, error) {
-	self.portMux.Lock()
-	defer self.portMux.Unlock()
-
-	if val, ok := self.outputPorts[portNo]; ok {
+	if val, ok := self.outputPorts.Get(portNo); ok {
 		return val, nil
 	}
 
@@ -149,16 +149,13 @@ func (self *OFSwitch) OutputPort(portNo uint32) (*Output, error) {
 	output.portNo = portNo
 
 	// store all outputs in a DB
-	self.outputPorts[portNo] = output
+	self.outputPorts.Set(portNo, output)
 
 	return output, nil
 }
 
 // Return a output graph element for the port reg
 func (self *OFSwitch) OutputPortReg(regName string, offset uint16) (_ *Output, err error) {
-	self.portMux.Lock()
-	defer self.portMux.Unlock()
-
 	// Create a new output element
 	output := new(Output)
 	output.outputType = "reg"
@@ -222,29 +219,24 @@ func (self *OFSwitch) DeleteFlowByCookie(cookieId, cookieMask uint64) {
 
 // Create a new group. return an error if it already exists
 func (self *OFSwitch) NewGroup(groupId uint32, groupType uint8) (*Group, error) {
-	self.groupLock.Lock()
-	defer self.groupLock.Unlock()
 	// check if the group already exists
-	if self.groupDb[groupId] != nil {
+	if self.groupDb.Has(groupId) {
 		return nil, errors.New("group already exists")
 	}
 
 	// Create a new group
 	group := newGroup(groupId, groupType, self)
 	// Save it in the DB
-	self.groupDb[groupId] = group
+	self.groupDb.Set(groupId, group)
 
 	return group, nil
 }
 
 func (self *OFSwitch) DeleteGroup(groupId uint32) {
-	self.groupLock.Lock()
-	defer self.groupLock.Unlock()
-	delete(self.groupDb, groupId)
+	self.groupDb.Remove(groupId)
 }
 
 func (self *OFSwitch) GetGroup(groupId uint32) *Group {
-	self.groupLock.Lock()
-	defer self.groupLock.Unlock()
-	return self.groupDb[groupId]
+	group, _ := self.groupDb.Get(groupId)
+	return group
 }
