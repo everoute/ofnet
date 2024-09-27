@@ -5,8 +5,8 @@ go 1.19
 require (
 	github.com/contiv/libOpenflow v0.0.0-20200107061746-e3817550c83b
 	github.com/contiv/libovsdb v0.0.0-20160406174930-bbc744d8ddc8
-	github.com/orcaman/concurrent-map v1.0.0
-	github.com/sirupsen/logrus v1.9.0
+	github.com/orcaman/concurrent-map/v2 v2.0.1
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.2
 )
 
@@ -24,7 +24,7 @@ require (
 )
 
 replace (
-	github.com/contiv/libOpenflow => github.com/everoute/libOpenflow v1.0.1-0.20240416045045-690b2d15bfbe
+	github.com/contiv/libOpenflow => github.com/everoute/libOpenflow v1.0.1-0.20240809085943-d64f3b694acf
 	github.com/contiv/libovsdb => github.com/everoute/libovsdb v0.0.0-20230109020235-5be40f26b455
 	github.com/osrg/gobgp => github.com/zwtop/gobgp v0.0.0-20210127101833-12edfc1f4514
 )
