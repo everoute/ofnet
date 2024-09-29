@@ -204,7 +204,8 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 
 		}
 	case *openflow13.ErrorMsg:
-		log.Errorf("Received ofp1.3 error msg: %+v, data: %s", *t, t.Data.String())
+		log.Errorf("Received OpenFlow1.3 error: %s on msg %s, origin data: %s",
+			GetErrorMessage(t.Type, t.Code, 0), GetErrorMessageType(t.Data), t.Data.String())
 	case *openflow13.VendorHeader:
 		switch t.ExperimenterType {
 		case openflow13.Type_TlvTableReply:
