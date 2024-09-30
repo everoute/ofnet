@@ -45,6 +45,8 @@ type OFSwitch struct {
 	ready           bool
 	retry           chan bool // Channel to notify controller reconnect switch
 	ControllerID    uint16
+	lastUpdate      time.Time // time at that receiving the last EchoReply
+	heartbeatStopCh chan struct{}
 
 	tlvMgr *tlvMapMgr
 
@@ -124,21 +126,33 @@ func (self *OFSwitch) Disconnect() {
 
 // Handle switch connected event
 func (self *OFSwitch) switchConnected() {
-
 	// Send new feature request
 	self.Send(openflow13.NewFeaturesRequest())
 
-	// FIXME: This is too fragile. Create a periodic timer
-	// Start the periodic echo request loop
 	self.Send(openflow13.NewEchoRequest())
 	self.requestTlvMap()
 	self.app.SwitchConnected(self)
+
+	self.heartbeatStopCh = make(chan struct{})
+	go func() {
+		timer := time.NewTicker(time.Second * 3)
+		defer timer.Stop()
+		for {
+			select {
+			case <-timer.C:
+				self.Send(openflow13.NewEchoRequest())
+			case <-self.heartbeatStopCh:
+				return
+			}
+		}
+	}()
 }
 
 // Handle switch disconnected event
 func (self *OFSwitch) switchDisconnected() {
-	self.app.SwitchDisconnected(self)
+	self.heartbeatStopCh <- struct{}{}
 	switchDb.Remove(self.DPID().String())
+	self.app.SwitchDisconnected(self)
 	if self.retry != nil {
 		self.retry <- true
 	}
@@ -183,16 +197,7 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 			self.Send(res)
 
 		case openflow13.Type_EchoReply:
-
-			// FIXME: This is too fragile. Create a periodic timer
-			// Wait three seconds then send an echo_request message.
-			go func() {
-				<-time.After(time.Second * 3)
-
-				// Send echo request
-				res := openflow13.NewEchoRequest()
-				self.Send(res)
-			}()
+			self.lastUpdate = time.Now()
 
 		case openflow13.Type_FeaturesRequest:
 
