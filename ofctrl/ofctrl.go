@@ -291,6 +291,11 @@ func (c *Controller) handleConnection(conn net.Conn) {
 				log.Warnf("Received ofp1.3 error msg: %+v", *m)
 				stream.Shutdown <- true
 			}
+		case err := <-stream.Error:
+			disconnected = true
+			// The connection has been shutdown.
+			log.Infof("message stream error %v", err)
+			return
 		case <-time.After(time.Second * 3):
 			// This shouldn't happen. If it does, both the controller
 			// and switch are no longer communicating. The TCPConn is
