@@ -42,9 +42,16 @@ const (
 	ClientMode
 )
 
-const (
+var (
 	MaxRetry      = 100
-	RetryInterval = 1
+	RetryInterval = 1 * time.Second
+)
+
+// Connection operation type
+const (
+	InitConnection = iota
+	ReConnection
+	CompleteConnection
 )
 
 // Note: Command to make ovs connect to controller:
@@ -76,8 +83,8 @@ type Controller struct {
 	listener     *net.TCPListener
 	wg           sync.WaitGroup
 	connectMode  ConnectionMode
-	stopChan     chan bool
-	DisconnChan  chan bool
+	connCh       chan int // Channel to control the UDS connection between controller and OFSwitch
+	exitCh       chan struct{}
 	controllerID uint16
 
 	optionConfig *options
@@ -115,9 +122,7 @@ func NewController(app AppInterface, opts ...Option) *Controller {
 func NewControllerAsOFClient(app AppInterface, controllerID uint16, opts ...Option) *Controller {
 	c := new(Controller)
 	c.connectMode = ClientMode
-	// Construct stop flag
-	c.stopChan = make(chan bool)
-	c.DisconnChan = make(chan bool)
+	c.exitCh = make(chan struct{})
 	c.app = app
 	c.controllerID = controllerID
 
@@ -131,20 +136,17 @@ func NewControllerAsOFClient(app AppInterface, controllerID uint16, opts ...Opti
 
 // Connect to Unix Domain Socket file
 func (c *Controller) Connect(sock string) {
-	if c.stopChan == nil {
-		// Construct stop flag for notifying controller to stop connections
-		c.stopChan = make(chan bool)
-		// Reset connection mode as ClientMode
+	if c.connCh == nil {
+		c.connCh = make(chan int)
+		c.exitCh = make(chan struct{})
 		c.connectMode = ClientMode
-	}
-	if c.DisconnChan == nil {
-		// Construct disconnection flag for notifying controller to retry connections
-		c.DisconnChan = make(chan bool)
-	}
-	go func() {
+
 		// Setup initial connection
-		c.DisconnChan <- true
-	}()
+		go func() {
+			c.connCh <- InitConnection
+		}()
+	}
+
 	var conn net.Conn
 	var err error
 	defer func() {
@@ -152,34 +154,63 @@ func (c *Controller) Connect(sock string) {
 			conn.Close()
 		}
 	}()
+
 	for {
 		select {
-		case <-c.stopChan:
-			log.Println("Controller is delete")
-			return
-		case disConnection := <-c.DisconnChan:
-			if disConnection == false {
+		case connCtrl := <-c.connCh:
+			switch connCtrl {
+			case InitConnection:
+				fallthrough
+			case ReConnection:
+				log.Infof("Initialize connection or re-connect to %s.", sock)
+
+				if conn != nil {
+					// Try to close the existing connection
+					_ = conn.Close()
+				}
+
+				// Retry to connect to the switch if hit error.
+				conn, err = c.getConnection(sock, MaxRetry, RetryInterval)
+
+				if err != nil {
+					log.Fatalf("Failed to reconnect ovs-vswitchd after max retry, error: %v", err)
+				}
+				MaxRetry = 0
+				c.wg.Add(1)
+				log.Printf("Connected to socket %s", sock)
+
+				go c.handleConnection(conn)
+
+			case CompleteConnection:
 				continue
 			}
-			log.Printf("%s is disconnected, connecting...", sock)
-			if conn != nil {
-				// Close existent connection
-				_ = conn.Close()
-			}
-			for i := 1; i <= MaxRetry; i++ {
-				conn, err = net.Dial("unix", sock)
-				if err == nil {
-					break
-				}
-				time.Sleep(time.Second * time.Duration(RetryInterval))
-			}
-			if err != nil {
-				log.Fatalf("Failed to reconnect ovs-vswitchd after max retry, error: %v", err)
-			}
+		case <-c.exitCh:
+			log.Println("Controller is delete")
+			return
+		}
+	}
+}
 
-			c.wg.Add(1)
-			log.Printf("Connecting to socket file %v", sock)
-			go c.handleConnection(conn)
+func (c *Controller) getConnection(address string, maxRetry int, retryInterval time.Duration) (net.Conn, error) {
+	var count int
+	for {
+		select {
+		case <-time.After(retryInterval):
+			conn, err := net.Dial("unix", address)
+			if err == nil {
+				return conn, nil
+			}
+			count++
+			// Check if the re-connection times come to the max value, if true, return the error.
+			// If it is required to re-connect until the Switch is connected, or the retry times it don't
+			// come the max value, continually retry.
+			if maxRetry > 0 && count == maxRetry {
+				return nil, err
+			}
+			log.Errorf("Failed to connect to %s, retry after %s: %v.", address, retryInterval.String(), err)
+		case <-c.exitCh:
+			log.Info("Controller is deleted, stop re-connections")
+			return nil, fmt.Errorf("controller is deleted, and connection is set as nil")
 		}
 	}
 }
@@ -218,7 +249,7 @@ func (c *Controller) Delete() {
 		c.listener.Close()
 	} else if c.connectMode == ClientMode {
 		// Send signal to stop connections to OF switch
-		c.stopChan <- true
+		close(c.exitCh)
 	}
 
 	c.wg.Wait()
@@ -227,9 +258,9 @@ func (c *Controller) Delete() {
 
 // Handle TCP connection from the switch
 func (c *Controller) handleConnection(conn net.Conn) {
-	var disconnected = false
+	var connFlag = ReConnection
 	defer func() {
-		c.DisconnChan <- disconnected
+		c.connCh <- connFlag
 	}()
 
 	defer c.wg.Done()
@@ -276,12 +307,19 @@ func (c *Controller) handleConnection(conn net.Conn) {
 				log.Printf("Received ofp1.3 Switch feature response: %+v", *m)
 
 				// Create a new switch and handover the stream
-				var reConnChan chan bool = nil
+				var reConnChan chan int = nil
 				if c.connectMode == ClientMode {
-					reConnChan = c.DisconnChan
+					reConnChan = c.connCh
 				}
-				NewSwitch(stream, m.DPID, c.app, reConnChan, c.controllerID, c.optionConfig.disableCleanGroup)
-
+				s := NewSwitch(stream, m.DPID, c.app, reConnChan, c.controllerID, c.optionConfig.disableCleanGroup)
+				if err := s.switchConnected(); err != nil {
+					log.Errorf("Failed to initialize OpenFlow switch %s: %v", m.DPID, err)
+					// Do not send event "ReConnection" in "switchDisconnected", because the event is sent in
+					// defer logic in "handleConnection".
+					s.switchDisconnected(false)
+					return
+				}
+				connFlag = CompleteConnection
 				// Let switch instance handle all future messages..
 				return
 
@@ -292,7 +330,6 @@ func (c *Controller) handleConnection(conn net.Conn) {
 				stream.Shutdown <- true
 			}
 		case err := <-stream.Error:
-			disconnected = true
 			// The connection has been shutdown.
 			log.Infof("message stream error %v", err)
 			return
@@ -301,7 +338,6 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// and switch are no longer communicating. The TCPConn is
 			// still established though.
 			log.Warnln("Connection timed out.")
-			disconnected = true
 			return
 		}
 	}
