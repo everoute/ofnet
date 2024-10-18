@@ -30,7 +30,7 @@ import (
 )
 
 // Initialize the fgraph elements on the switch
-func (self *OFSwitch) initFgraph() error {
+func (self *OFSwitch) initFgraph() {
 	// Create the DBs
 	self.tableDb = cmap.NewWithCustomShardingFunction[uint8, *Table](func(key uint8) uint32 { return uint32(key) })
 	self.outputPorts = cmap.NewWithCustomShardingFunction[uint32, *Output](func(key uint32) uint32 { return key })
@@ -59,18 +59,6 @@ func (self *OFSwitch) initFgraph() error {
 	normalLookup.outputType = "normal"
 	normalLookup.portNo = openflow13.P_NORMAL
 	self.normalLookup = normalLookup
-
-	if self.disableCleanGroup {
-		return nil
-	}
-	// Clear all existing flood lists
-	groupMod := openflow13.NewGroupMod()
-	groupMod.GroupId = openflow13.OFPG_ALL
-	groupMod.Command = openflow13.OFPGC_DELETE
-	groupMod.Type = openflow13.OFPGT_ALL
-	self.Send(groupMod)
-
-	return nil
 }
 
 // Create a new table. return an error if it already exists
@@ -239,4 +227,17 @@ func (self *OFSwitch) DeleteGroup(groupId uint32) {
 func (self *OFSwitch) GetGroup(groupId uint32) *Group {
 	group, _ := self.groupDb.Get(groupId)
 	return group
+}
+
+// clearGroups clears all existing groups.
+func (self *OFSwitch) clearGroups() error {
+	if self.disableCleanGroup {
+		return nil
+	}
+	// Clear all existing flood lists
+	groupMod := openflow13.NewGroupMod()
+	groupMod.GroupId = openflow13.OFPG_ALL
+	groupMod.Command = openflow13.OFPGC_DELETE
+	groupMod.Type = openflow13.OFPGT_ALL
+	return self.Send(groupMod)
 }
