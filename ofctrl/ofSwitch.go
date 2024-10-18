@@ -16,6 +16,8 @@ limitations under the License.
 package ofctrl
 
 import (
+	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -43,10 +45,12 @@ type OFSwitch struct {
 
 	CookieAllocator cookie.Allocator
 	ready           bool
-	retry           chan bool // Channel to notify controller reconnect switch
+	connCh          chan int
 	ControllerID    uint16
 	lastUpdate      time.Time // time at that receiving the last EchoReply
-	heartbeatStopCh chan struct{}
+
+	ctx    context.Context    // ctx is used in the lifecycle of a connection
+	cancel context.CancelFunc // cancel is used to cancel the proceeding OpenFlow message when OFSwitch is disconnected.
 
 	tlvMgr *tlvMapMgr
 
@@ -61,17 +65,17 @@ func init() {
 
 // Builds and populates a Switch struct then starts listening
 // for OpenFlow messages on conn.
-func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, retryChan chan bool, id uint16, disableCleanGroup bool) *OFSwitch {
-	var s *OFSwitch
-
-	if getSwitch(dpid) == nil {
+func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, connCh chan int, id uint16, disableCleanGroup bool) *OFSwitch {
+	s := getSwitch(dpid)
+	if s == nil {
 		log.Infoln("Openflow Connection for new switch:", dpid)
 
 		s = new(OFSwitch)
 		s.app = app
 		s.stream = stream
 		s.dpid = dpid
-		s.retry = retryChan
+		s.connCh = connCh
+
 		s.ControllerID = id
 		s.disableCleanGroup = disableCleanGroup
 
@@ -85,16 +89,14 @@ func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterfa
 		go s.receive()
 
 	} else {
-		log.Infoln("Openflow Connection for switch:", dpid)
-
-		s = getSwitch(dpid)
+		log.Infoln("Openflow re-connection for switch:", dpid)
 		s.stream = stream
 		s.dpid = dpid
 	}
 
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 	// send Switch connected callback
 	s.tlvMgr = newTLVMapMgr()
-	s.switchConnected()
 
 	// Return the new switch
 	return s
@@ -115,17 +117,32 @@ func (self *OFSwitch) DPID() net.HardwareAddr {
 }
 
 // Sends an OpenFlow message to this Switch.
-func (self *OFSwitch) Send(req util.Message) {
-	self.stream.Outbound <- req
+func (self *OFSwitch) Send(req util.Message) error {
+	select {
+	case <-time.After(messageTimeout):
+		return fmt.Errorf("message send timeout")
+	case self.stream.Outbound <- req:
+		return nil
+	case <-self.ctx.Done():
+		return fmt.Errorf("message is canceled because of disconnection from the Switch")
+	}
 }
 
 func (self *OFSwitch) Disconnect() {
 	self.stream.Shutdown <- true
-	self.switchDisconnected()
+	self.switchDisconnected(false)
 }
 
 // Handle switch connected event
-func (self *OFSwitch) switchConnected() {
+func (self *OFSwitch) switchConnected() error {
+	if err := self.clearGroups(); err != nil {
+		return fmt.Errorf("fails to clear groups: %v", err)
+	}
+
+	// Main receive loop for the switch
+	go self.receive()
+	go self.echoRequest()
+
 	// Send new feature request
 	self.Send(openflow13.NewFeaturesRequest())
 
@@ -133,28 +150,29 @@ func (self *OFSwitch) switchConnected() {
 	self.requestTlvMap()
 	self.app.SwitchConnected(self)
 
-	self.heartbeatStopCh = make(chan struct{})
-	go func() {
-		timer := time.NewTicker(time.Second * 3)
-		defer timer.Stop()
-		for {
-			select {
-			case <-timer.C:
-				self.Send(openflow13.NewEchoRequest())
-			case <-self.heartbeatStopCh:
-				return
-			}
-		}
-	}()
+	return nil
 }
 
 // Handle switch disconnected event
-func (self *OFSwitch) switchDisconnected() {
-	self.heartbeatStopCh <- struct{}{}
+func (self *OFSwitch) switchDisconnected(reconnect bool) {
+	self.cancel()
 	switchDb.Remove(self.DPID().String())
 	self.app.SwitchDisconnected(self)
-	if self.retry != nil {
-		self.retry <- true
+	if reconnect && self.connCh != nil {
+		self.connCh <- ReConnection
+	}
+}
+
+func (self *OFSwitch) echoRequest() {
+	timer := time.NewTicker(time.Second * 3)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			self.Send(openflow13.NewEchoRequest())
+		case <-self.ctx.Done():
+			return
+		}
 	}
 }
 
@@ -170,7 +188,7 @@ func (self *OFSwitch) receive() {
 			log.Warnf("Received ERROR message from switch %v. Err: %v", self.dpid, err)
 
 			// send Switch disconnected callback
-			self.switchDisconnected()
+			self.switchDisconnected(true)
 			return
 		}
 	}

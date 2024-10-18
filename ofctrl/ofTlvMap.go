@@ -169,6 +169,9 @@ func (s *OFSwitch) requestTlvMap() error {
 		return nil
 	case <-time.After(messageTimeout):
 		err = fmt.Errorf("tlv-map request is not replied on switch %s in 10s", s.dpid.String())
+	case <-s.ctx.Done():
+		err = fmt.Errorf("cancel the wait for tlv-map reply because switch %s is diconnected", s.dpid.String())
+
 	}
 	return err
 }
