@@ -47,7 +47,6 @@ type OFSwitch struct {
 	ready           bool
 	connCh          chan int
 	ControllerID    uint16
-	lastUpdate      time.Time // time at that receiving the last EchoReply
 
 	ctx    context.Context    // ctx is used in the lifecycle of a connection
 	cancel context.CancelFunc // cancel is used to cancel the proceeding OpenFlow message when OFSwitch is disconnected.
@@ -219,7 +218,6 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 			self.Send(res)
 
 		case openflow13.Type_EchoReply:
-			self.lastUpdate = time.Now()
 
 		case openflow13.Type_FeaturesRequest:
 
