@@ -108,9 +108,8 @@ func (self *OFSwitch) DeleteSpecTableFlows(tableId uint8, priority *uint16, ofMa
 	if self == nil {
 		return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
 	}
-	self.Send(flowMod)
 
-	return nil
+	return self.Send(flowMod)
 }
 
 // GetTable Returns a table
@@ -202,7 +201,7 @@ func (self *OFSwitch) DeleteFlowByCookie(cookieId, cookieMask uint64) {
 	flowMod.OutGroup = openflow13.OFPG_ANY
 	flowMod.TableId = openflow13.OFPTT_ALL
 
-	self.Send(flowMod)
+	_ = self.Send(flowMod)
 }
 
 // Create a new group. return an error if it already exists

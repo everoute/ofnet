@@ -9,8 +9,8 @@ github.com/cenkalti/rpc2 v0.0.0-20210604223624-c1acbc6ec984/go.mod h1:v2npkhrXyk
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/everoute/libOpenflow v1.0.1-0.20241017045702-95ea206b1740 h1:0kBJjIdaVYpn38S3B4L0lFd3DWTAupmGGdZsRDAMQY0=
-github.com/everoute/libOpenflow v1.0.1-0.20241017045702-95ea206b1740/go.mod h1:Glli90eKTMhkETRmgjf2DgHTf+PDCQUv6nZvubrLuuA=
+github.com/everoute/libOpenflow v1.0.1-0.20241023024533-3fff8fcc5e74 h1:d4ZkDRNWQTZGsQF7ioTzkmgMFVaJuh73v5XRlKo0ze4=
+github.com/everoute/libOpenflow v1.0.1-0.20241023024533-3fff8fcc5e74/go.mod h1:Glli90eKTMhkETRmgjf2DgHTf+PDCQUv6nZvubrLuuA=
 github.com/everoute/libovsdb v0.0.0-20230109020235-5be40f26b455 h1:x6peVyYZSmva1OJJZ2CCNPs4m+tvWEHJ1s5tX5j629s=
 github.com/everoute/libovsdb v0.0.0-20230109020235-5be40f26b455/go.mod h1:qV7bn/XogGqNiuk52aU4x8WqOb2JEU1CYDpf8D1jkRg=
 github.com/go-logr/logr v0.1.0/go.mod h1:ixOQHD9gLJUVQQ2ZOR7zLEifBX6tGkNJF4QyIY7sIas=
