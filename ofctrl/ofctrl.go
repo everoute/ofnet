@@ -175,7 +175,6 @@ func (c *Controller) Connect(sock string) {
 				if err != nil {
 					log.Fatalf("Failed to reconnect ovs-vswitchd after max retry, error: %v", err)
 				}
-				MaxRetry = 0
 				c.wg.Add(1)
 				log.Printf("Connected to socket %s", sock)
 
