@@ -657,7 +657,9 @@ func (self *Flow) install() error {
 	if self.Table.Switch == nil {
 		return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
 	}
-	self.Table.Switch.Send(flowMod)
+	if err := self.Table.Switch.Send(flowMod); err != nil {
+		return err
+	}
 
 	// Mark it as installed
 	self.isInstalled = true
@@ -963,7 +965,10 @@ func (self *Flow) Delete() error {
 		if self.Table.Switch == nil {
 			return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
 		}
-		self.Table.Switch.Send(flowMod)
+
+		if err := self.Table.Switch.Send(flowMod); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -986,9 +991,8 @@ func DeleteFlow(table *Table, priority uint16, flowID uint64) error {
 	if table.Switch == nil {
 		return dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
 	}
-	table.Switch.Send(flowMod)
 
-	return nil
+	return table.Switch.Send(flowMod)
 }
 
 func InstallFlow(flow *Flow) error {

@@ -160,9 +160,7 @@ func SendPacket(sw *OFSwitch, packetOut *PacketOut) error {
 		log.Infof("send packetout action %v", action)
 	}
 
-	sw.Send(ofPacketOut)
-
-	return nil
+	return sw.Send(ofPacketOut)
 }
 
 func GeneratePacketOutData(p *PacketOut) *protocol.Ethernet {

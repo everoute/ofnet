@@ -144,9 +144,13 @@ func (self *OFSwitch) switchConnected() error {
 	go self.echoRequest()
 
 	// Send new feature request
-	self.Send(openflow13.NewFeaturesRequest())
+	if err := self.Send(openflow13.NewFeaturesRequest()); err != nil {
+		return err
+	}
+	if err := self.Send(openflow13.NewEchoRequest()); err != nil {
+		return err
+	}
 
-	self.Send(openflow13.NewEchoRequest())
 	self.requestTlvMap()
 	self.app.SwitchConnected(self)
 

@@ -39,7 +39,9 @@ func DeleteGroup(ofSwitch *OFSwitch, groupID uint32) error {
 	groupMod.GroupId = groupID
 	groupMod.Command = openflow13.OFPGC_DELETE
 
-	ofSwitch.Send(groupMod)
+	if err := ofSwitch.Send(groupMod); err != nil {
+		return err
+	}
 
 	ofSwitch.DeleteGroup(groupID)
 
@@ -51,7 +53,7 @@ func (self *Group) Delete() {
 		groupMod := openflow13.NewGroupMod()
 		groupMod.GroupId = self.GroupID
 		groupMod.Command = openflow13.OFPGC_DELETE
-		self.Switch.Send(groupMod)
+		_ = self.Switch.Send(groupMod)
 		// Mark it as unInstalled
 		self.isInstalled = false
 	}
@@ -86,7 +88,9 @@ func (self *Group) Install() error {
 
 	// Send it to the switch
 	// indirect group must contain at least one bucket, otherwise, it will install failed
-	self.Switch.Send(groupMod)
+	if err := self.Switch.Send(groupMod); err != nil {
+		return err
+	}
 
 	// Mark it as installed
 	self.isInstalled = true
