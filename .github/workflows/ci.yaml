@@ -11,15 +11,9 @@ on:
 
 jobs:
   pr-check:
-    runs-on: ubuntu-20.04
+    runs-on: [ self-hosted, pod ]
 
     steps:
       - uses: actions/checkout@v2
-      - name: setup docker-compose
-        run: |
-          sudo mkdir -p /usr/libexec/docker/cli-plugins
-          sudo curl -fLo /usr/libexec/docker/cli-plugins/docker-compose https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-linux-x86_64
-          sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose
-          sudo ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose
       - run: make docker-build
       - run: make docker-test

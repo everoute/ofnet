@@ -64,7 +64,7 @@ func init() {
 
 // Builds and populates a Switch struct then starts listening
 // for OpenFlow messages on conn.
-func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, connCh chan int, id uint16, disableCleanGroup bool) *OFSwitch {
+func NewSwitch(pctx context.Context, stream *util.MessageStream, dpid net.HardwareAddr, app AppInterface, connCh chan int, id uint16, disableCleanGroup bool) *OFSwitch {
 	s := getSwitch(dpid)
 	if s == nil {
 		log.Infoln("Openflow Connection for new switch:", dpid)
@@ -83,17 +83,13 @@ func NewSwitch(stream *util.MessageStream, dpid net.HardwareAddr, app AppInterfa
 
 		// Save it
 		switchDb.Set(dpid.String(), s)
-
-		// Main receive loop for the switch
-		go s.receive()
-
 	} else {
 		log.Infoln("Openflow re-connection for switch:", dpid)
 		s.stream = stream
 		s.dpid = dpid
 	}
 
-	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.ctx, s.cancel = context.WithCancel(pctx)
 	// send Switch connected callback
 	s.tlvMgr = newTLVMapMgr()
 
