@@ -18,6 +18,7 @@ package ofctrl
 // This library implements a simple openflow 1.3 controller
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -79,12 +80,15 @@ type AppInterface interface {
 type Option func(opt *options)
 
 type Controller struct {
-	app          AppInterface
-	listener     *net.TCPListener
-	wg           sync.WaitGroup
-	connectMode  ConnectionMode
-	connCh       chan int // Channel to control the UDS connection between controller and OFSwitch
-	exitCh       chan struct{}
+	app         AppInterface
+	listener    *net.TCPListener
+	wg          sync.WaitGroup
+	connectMode ConnectionMode
+	connCh      chan int // Channel to control the UDS connection between controller and OFSwitch
+
+	exitCtx       context.Context
+	exitCtxCancel context.CancelFunc
+
 	controllerID uint16
 
 	optionConfig *options
@@ -104,7 +108,7 @@ func DisableCleanGroup() Option {
 func NewController(app AppInterface, opts ...Option) *Controller {
 	c := new(Controller)
 	c.connectMode = ServerMode
-
+	c.exitCtx, c.exitCtxCancel = context.WithCancel(context.Background())
 	// for debug logs
 	// log.SetLevel(log.DebugLevel)
 
@@ -122,7 +126,7 @@ func NewController(app AppInterface, opts ...Option) *Controller {
 func NewControllerAsOFClient(app AppInterface, controllerID uint16, opts ...Option) *Controller {
 	c := new(Controller)
 	c.connectMode = ClientMode
-	c.exitCh = make(chan struct{})
+	c.exitCtx, c.exitCtxCancel = context.WithCancel(context.Background())
 	c.app = app
 	c.controllerID = controllerID
 
@@ -138,7 +142,7 @@ func NewControllerAsOFClient(app AppInterface, controllerID uint16, opts ...Opti
 func (c *Controller) Connect(sock string) {
 	if c.connCh == nil {
 		c.connCh = make(chan int)
-		c.exitCh = make(chan struct{})
+		c.exitCtx, c.exitCtxCancel = context.WithCancel(context.Background())
 		c.connectMode = ClientMode
 
 		// Setup initial connection
@@ -183,7 +187,7 @@ func (c *Controller) Connect(sock string) {
 			case CompleteConnection:
 				continue
 			}
-		case <-c.exitCh:
+		case <-c.exitCtx.Done():
 			log.Println("Controller is delete")
 			return
 		}
@@ -207,7 +211,7 @@ func (c *Controller) getConnection(address string, maxRetry int, retryInterval t
 				return nil, err
 			}
 			log.Errorf("Failed to connect to %s, retry after %s: %v.", address, retryInterval.String(), err)
-		case <-c.exitCh:
+		case <-c.exitCtx.Done():
 			log.Info("Controller is deleted, stop re-connections")
 			return nil, fmt.Errorf("controller is deleted, and connection is set as nil")
 		}
@@ -248,7 +252,7 @@ func (c *Controller) Delete() {
 		c.listener.Close()
 	} else if c.connectMode == ClientMode {
 		// Send signal to stop connections to OF switch
-		close(c.exitCh)
+		c.exitCtxCancel()
 	}
 
 	c.wg.Wait()
@@ -310,7 +314,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 				if c.connectMode == ClientMode {
 					reConnChan = c.connCh
 				}
-				s := NewSwitch(stream, m.DPID, c.app, reConnChan, c.controllerID, c.optionConfig.disableCleanGroup)
+				s := NewSwitch(c.exitCtx, stream, m.DPID, c.app, reConnChan, c.controllerID, c.optionConfig.disableCleanGroup)
 				if err := s.switchConnected(); err != nil {
 					log.Errorf("Failed to initialize OpenFlow switch %s: %v", m.DPID, err)
 					// Do not send event "ReConnection" in "switchDisconnected", because the event is sent in
@@ -318,6 +322,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 					s.switchDisconnected(false)
 					return
 				}
+				log.Printf("success to create connection for switch : %s", m.DPID)
 				connFlag = CompleteConnection
 				// Let switch instance handle all future messages..
 				return

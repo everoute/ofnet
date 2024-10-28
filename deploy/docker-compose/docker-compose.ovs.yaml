@@ -4,6 +4,7 @@ services:
   ovsdb-server:
     image: ghcr.io/smartxworks/ovs:2.14.0
     command: ovsdb-server
+    privileged: true
     network_mode: "host"
 
   ovs-vswitchd:
