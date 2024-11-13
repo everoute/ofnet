@@ -680,6 +680,17 @@ func (self *Flow) Next(elem FgraphElem) error {
 	return self.install()
 }
 
+func (self *Flow) ForceAddInstall() error {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+
+	// clear installed flag
+	self.isInstalled = false
+
+	// Install the flow entry
+	return self.install()
+}
+
 func (self *Flow) SetConntrack(connTrackAction *ConnTrackAction) error {
 	self.flowActions = append(self.flowActions, connTrackAction)
 
