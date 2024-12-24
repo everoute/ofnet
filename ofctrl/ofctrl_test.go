@@ -237,11 +237,12 @@ func TestCreateDeleteFlow(t *testing.T) {
 		t.Errorf("Error creating an output port. Err: %v", err)
 	}
 
+	var vlan uint16 = 1
 	// create mac flow
 	macAddr, _ := net.ParseMAC("02:01:01:01:01:01")
 	macFlow, err := ofActor.nextTable.NewFlow(FlowMatch{
 		Priority: 100,
-		VlanId:   1,
+		VlanId:   &vlan,
 		MacDa:    &macAddr,
 	})
 	if err != nil {
