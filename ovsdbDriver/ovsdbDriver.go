@@ -48,8 +48,7 @@ func NewOvsDriver(bridgeName string) *OvsDriver {
 	_ = ovs.MonitorAll("Open_vSwitch", "")
 
 	// Create the default bridge instance
-	err = ovsDriver.CreateBridge(ovsDriver.OvsBridgeName)
-	if err != nil {
+	if err = ovsDriver.CreateBridge(ovsDriver.OvsBridgeName); err != nil {
 		log.Fatalf("Error creating the default bridge. Err: %v", err)
 	}
 
@@ -183,9 +182,9 @@ func (self *OvsDriver) ovsdbTransact(ops []libovsdb.Operation) error {
 	// Parse reply and look for errors
 	for i, o := range reply {
 		if o.Error != "" && i < len(ops) {
-			return errors.New("OVS Transaction failed err " + o.Error + "Details: " + o.Details)
+			return errors.New("OVS Transaction failed err " + o.Error + "Details: " + o.Details + " UUID: " + o.UUID.GoUuid)
 		} else if o.Error != "" {
-			return errors.New("OVS Transaction failed err " + o.Error + "Details: " + o.Details)
+			return errors.New("OVS Transaction failed err " + o.Error + "Details: " + o.Details + " UUID: " + o.UUID.GoUuid)
 		}
 	}
 
@@ -345,6 +344,31 @@ func (self *OvsDriver) GetOtherConfig() (map[string]string, error) {
 	return buildMapFromOVSDBMap(externalIds), nil
 }
 
+func (self *OvsDriver) GetInternalPortMac() (string, error) {
+	selectOper := libovsdb.Operation{
+		Op:      "select",
+		Table:   "Port",
+		Where:   []interface{}{[]interface{}{"name", "==", self.OvsBridgeName}},
+		Columns: []string{"mac"},
+	}
+
+	opers := []libovsdb.Operation{selectOper}
+	ret, err := self.ovsClient.Transact("Open_vSwitch", opers...)
+	if err != nil {
+		return "", fmt.Errorf("ovsdb select internal port mac transaction failed: %v", opers)
+	}
+
+	if len(ret) == 0 || len(ret[0].Rows) == 0 {
+		return "", nil
+	}
+
+	mac, ok := ret[0].Rows[0]["mac"].(string)
+	if !ok {
+		return "", nil
+	}
+	return mac, nil
+}
+
 func (self *OvsDriver) SetExternalIds(externalIds map[string]string) error {
 	oMap := buildOVSDBMapFromMap(externalIds)
 	row := make(map[string]interface{})
@@ -406,8 +430,8 @@ func (self *OvsDriver) UpdateInterface(ifaceName string, externalIDs map[string]
 
 // Create an internal port in OVS
 func (self *OvsDriver) CreatePort(intfName, intfType string, vlanTag uint) error {
-	portUuidStr := intfName
-	intfUuidStr := fmt.Sprintf("Intf%s", intfName)
+	portUuidStr := "portdummy"
+	intfUuidStr := "ifacedummy"
 	portUuid := []libovsdb.UUID{{GoUuid: portUuidStr}}
 	intfUuid := []libovsdb.UUID{{GoUuid: intfUuidStr}}
 	opStr := "insert"
