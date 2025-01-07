@@ -382,18 +382,30 @@ func setDatapathID(conn *ovsdb.OvsdbClient, bridgeName string) error {
 	h := sha256.New()
 	h.Write([]byte(bridgeName))
 	datapathID := h.Sum(nil)[:8]
+	mac := net.HardwareAddr(h.Sum(nil)[:6])
+	mac[0] &^= 1
 
 	config, _ := ovsdb.NewOvsMap(map[string]string{"datapath-id": hex.EncodeToString(datapathID)})
-	operation := ovsdb.Operation{
+	operDpid := ovsdb.Operation{
 		Op:        "mutate",
 		Table:     "Bridge",
 		Where:     []interface{}{[]interface{}{"name", "==", bridgeName}},
 		Mutations: []interface{}{[]interface{}{"other_config", "insert", config}}, // never update the datapath id
 	}
-	_, err := ovsdbTransact(conn, "Open_vSwitch", operation)
 
+	operMac := ovsdb.Operation{
+		Op:        "mutate",
+		Table:     "Port",
+		Where:     []interface{}{[]interface{}{"name", "==", bridgeName}},
+		Mutations: []interface{}{[]interface{}{"mac", "insert", mac.String()}},
+	}
+	if _, err := ovsdbTransact(conn, "Open_vSwitch", operDpid, operMac); err != nil {
+		return err
+	}
+
+	log.Infof("bridge %s internal port mac (if exist) has been set to %s", bridgeName, mac.String())
 	log.Infof("bridge %s datapath id has been set to %s", bridgeName, hex.EncodeToString(datapathID))
-	return err
+	return nil
 }
 
 func ovsdbTransact(client *ovsdb.OvsdbClient, database string, operation ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
