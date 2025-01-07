@@ -858,6 +858,10 @@ func TestNewOFController(t *testing.T) {
 	driver := ovsdbDriver.NewOvsDriver(bridgeName)
 	defer driver.Delete()
 
+	if err := driver.CreatePort(bridgeName, "internal", 0); err != nil {
+		t.Fatalf("fail to create default internal port : %s", err)
+	}
+
 	_ = NewOFController(&ofActor, uint16(rand.Intn(1024)), driver.OVSClient(), bridgeName)
 
 	//wait for 2sec
@@ -870,5 +874,9 @@ func TestNewOFController(t *testing.T) {
 
 	if config["datapath-id"] == "" {
 		t.Fatalf("datapath id must be set before connect to switch")
+	}
+
+	if mac, err := driver.GetInternalPortMac(); err != nil || mac == "" {
+		t.Fatalf("internal port mac must be set before connect to switch, err = %s", err)
 	}
 }
