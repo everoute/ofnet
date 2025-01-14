@@ -14,10 +14,13 @@ const (
 
 type ID uint64
 
-func newId(round uint64, flowId uint64) ID {
+func (a *allocator) newId() ID {
 	r := uint64(0)
-	r |= round << (64 - BitWidthReserved - BitWidthRoundNum)
-	r |= uint64(flowId)
+	r |= a.roundNum << (64 - BitWidthReserved - BitWidthRoundNum)
+	if a.bussinessBit > 0 {
+		r |= a.bussinessNum << (64 - BitWidthReserved - BitWidthRoundNum - a.bussinessBit)
+	}
+	r |= uint64(a.flowID)
 
 	return ID(r)
 }
@@ -36,10 +39,12 @@ type Allocator interface {
 }
 
 type allocator struct {
-	roundNum   uint64
-	flowID     uint64
-	fixedMask  uint64
-	flowIDLock sync.RWMutex
+	roundNum     uint64
+	flowID       uint64
+	fixedMask    uint64
+	bussinessNum uint64
+	bussinessBit uint8
+	flowIDLock   sync.RWMutex
 }
 
 // cookie will 'OR' fixed mask
@@ -51,7 +56,7 @@ func (a *allocator) RequestCookie() uint64 {
 	a.flowIDLock.Lock()
 	defer a.flowIDLock.Unlock()
 
-	rawID := newId(a.roundNum, a.flowID).RawId()
+	rawID := a.newId().RawId()
 	a.flowID += 1
 	return rawID | a.fixedMask
 }
@@ -62,6 +67,21 @@ func NewAllocator(roundNum uint64) Allocator {
 		flowID:     1,
 		flowIDLock: sync.RWMutex{},
 	}
+	return a
+}
+
+func NewAllocatorWithBussinessBit(roundNum uint64, bussinessNum uint64, bussinessBit uint8) Allocator {
+	if bussinessNum >= 1<<bussinessBit {
+		return nil
+	}
+	a := &allocator{
+		roundNum:     roundNum,
+		flowID:       1,
+		flowIDLock:   sync.RWMutex{},
+		bussinessNum: bussinessNum,
+		bussinessBit: bussinessBit,
+	}
+
 	return a
 }
 
