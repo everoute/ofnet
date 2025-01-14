@@ -46,19 +46,35 @@ var globalFlowID uint64 = 1
 
 // Create a new flow on the table
 func (self *Table) NewFlow(match FlowMatch) (*Flow, error) {
+	if self.Switch == nil {
+		return nil, dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+	}
+
+	var flowID uint64
+	if self.Switch.CookieAllocator != nil {
+		var err error
+		flowID, err = self.Switch.CookieAllocator.RequestCookie()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		flowID = globalFlowID // FIXME: need a better id allocation
+		globalFlowID += 1
+	}
+
+	return self.NewFlowWithFlowID(match, flowID)
+}
+
+func (self *Table) NewFlowWithFlowID(match FlowMatch, flowID uint64) (*Flow, error) {
+	if self.Switch == nil {
+		return nil, dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
+	}
 	flow := new(Flow)
 	flow.Table = self
 	flow.Match = match
 	flow.isInstalled = false
-	if self.Switch == nil {
-		return nil, dperror.NewDpError(dperror.SwitchDisconnectedError.Code, dperror.SwitchDisconnectedError.Msg, fmt.Errorf("ofSwitch disconnected"))
-	}
-	if self.Switch.CookieAllocator != nil {
-		flow.FlowID = self.Switch.CookieAllocator.RequestCookie()
-	} else {
-		flow.FlowID = globalFlowID // FIXME: need a better id allocation
-		globalFlowID += 1
-	}
+
+	flow.FlowID = flowID
 	flow.flowActions = make([]Action, 0)
 
 	log.Debugf("Creating new flow for match: %+v", match)

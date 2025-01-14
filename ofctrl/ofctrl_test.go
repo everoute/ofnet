@@ -127,6 +127,16 @@ func ofctlFlowMatch(flowList []string, tableId int, matchStr, actStr string) boo
 	return false
 }
 
+func ofctlFlowMatchCookieID(flowList []string, cookieID uint64) bool {
+	mStr := fmt.Sprintf("cookie=%#x", cookieID)
+	for _, flowEntry := range flowList {
+		if strings.Contains(flowEntry, mStr) {
+			return true
+		}
+	}
+	return false
+}
+
 // ofctlDumpFlowMatch dumps flows and finds a match
 func ofctlDumpFlowMatch(brName string, tableId int, matchStr, actStr string) bool {
 	// dump flows
@@ -292,6 +302,21 @@ func TestCreateDeleteFlow(t *testing.T) {
 		t.Errorf("Error installing the tcp flow")
 	}
 
+	// newflow with flowid
+	idFlow, err := ofActor.inputTable.NewFlowWithFlowID(FlowMatch{
+		Priority:     100,
+		Ethertype:    0x0800,
+		IpProto:      6,
+		TcpDstPort:   8080,
+	}, 0x80)
+	if err != nil {
+		t.Errorf("Error creating flow with flowid")
+	}
+	log.Infof("Creating id flow: %+v", idFlow)
+	if err := idFlow.Next(output); err != nil {
+		t.Errorf("Error installing the id flow")
+	}
+
 	// verify it got installed
 	flowList, err := ofctlFlowDump("ovsbr11")
 	if err != nil {
@@ -323,6 +348,10 @@ func TestCreateDeleteFlow(t *testing.T) {
 		t.Errorf("IP flow not found in OVS.")
 	}
 
+	if !ofctlFlowMatchCookieID(flowList, 0x80) {
+		t.Errorf("fix cookieID flow not found in OVS.")
+	}
+
 	// Delete the flow
 	err = inPortFlow.Delete()
 	if err != nil {
@@ -347,34 +376,17 @@ func TestCreateDeleteFlow(t *testing.T) {
 		t.Errorf("Error deleting the tcp flow. Err: %v", err)
 	}
 
+	if err = idFlow.Delete(); err != nil {
+		t.Errorf("Error deleting the id flow. Err: %v", err)
+	}
+
 	// Make sure they are really gone
 	flowList, err = ofctlFlowDump("ovsbr11")
 	if err != nil {
 		t.Errorf("Error getting flow entry")
 	}
-
-	// Match inport flow and see if its still there..
-	if ofctlFlowMatch(flowList, 0, "priority=100,in_port=1",
-		"push_vlan:0x8100,set_field:4097->vlan_vid,goto_table:1") {
-		t.Errorf("in port flow still found in OVS after deleting it.")
-	}
-
-	// match ip flow
-	if ofctlFlowMatch(flowList, 1, "priority=100,ip,nw_dst=10.10.10.10",
-		"output:1") {
-		t.Errorf("IP flow not found in OVS.")
-	}
-
-	// match mac flow
-	if ofctlFlowMatch(flowList, 1, "priority=100,dl_vlan=1,dl_dst=02:01:01:01:01:01",
-		"pop_vlan,output:1") {
-		t.Errorf("Mac flow not found in OVS.")
-	}
-
-	// match tcp flow
-	if ofctlFlowMatch(flowList, 1, "priority=100,tcp,tp_dst=80,tcp_flags=+syn",
-		"output:1") {
-		t.Errorf("IP flow not found in OVS.")
+	if len(flowList) != 0 {
+		t.Errorf("doesn't delete all flow: %s", flowList)
 	}
 }
 
