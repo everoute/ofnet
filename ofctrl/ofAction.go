@@ -62,13 +62,11 @@ func (a *NXController) GetActionType() string {
 }
 
 type OutputAction struct {
-	actionType string
 	outputPort uint32
 }
 
-func NewOutputAction(actionType string, outputPort uint32) *OutputAction {
+func NewOutputAction(outputPort uint32) *OutputAction {
 	outputAction := new(OutputAction)
-	outputAction.actionType = actionType
 	outputAction.outputPort = outputPort
 
 	return outputAction

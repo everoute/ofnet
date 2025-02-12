@@ -975,11 +975,11 @@ func (self *Flow) SetTunnelDstIP(dst net.IP) error {
 	return self.AddAction(act)
 }
 
-func (self *Flow) AddAction(act Action) error {
+func (self *Flow) AddAction(acts ...Action) error {
 	self.lock.Lock()
 	defer self.lock.Unlock()
 
-	self.flowActions = append(self.flowActions, act)
+	self.flowActions = append(self.flowActions, acts...)
 
 	if self.isInstalled {
 		self.install()
