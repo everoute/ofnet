@@ -323,6 +323,44 @@ func (self *OvsDriver) GetExternalIds() (map[string]string, error) {
 	return buildMapFromOVSDBMap(externalIds), nil
 }
 
+func (self *OvsDriver) GetRootExternalIds() (map[string]string, error) {
+	selectOper := libovsdb.Operation{
+		Op:      "select",
+		Table:   "Open_vSwitch",
+		Where:   []interface{}{[]interface{}{"ovs_version", "!=", ""}},
+		Columns: []string{"external_ids"},
+	}
+
+	opers := []libovsdb.Operation{selectOper}
+	ovsBridgeExternalids, err := self.ovsClient.Transact("Open_vSwitch", opers...)
+	if err != nil {
+		return nil, fmt.Errorf("ovsdb select externalIds transaction failed: %v, err: %s", opers, err)
+	}
+	if len(ovsBridgeExternalids[0].Rows) == 0 {
+		return map[string]string{}, nil
+	}
+	externalIds := ovsBridgeExternalids[0].Rows[0]["external_ids"].([]interface{})
+
+	return buildMapFromOVSDBMap(externalIds), nil
+}
+
+func (self *OvsDriver) SetRootExternalIds(externalIds map[string]string) error {
+	oMap := buildOVSDBMapFromMap(externalIds)
+	row := make(map[string]interface{})
+	row["external_ids"] = oMap
+
+	// simple insert operation
+	updateOper := libovsdb.Operation{
+		Op:    "update",
+		Table: "Open_vSwitch",
+		Where: []interface{}{[]interface{}{"ovs_version", "!=", ""}},
+		Row:   row,
+	}
+	updateOpers := []libovsdb.Operation{updateOper}
+
+	return self.ovsdbTransact(updateOpers)
+}
+
 func (self *OvsDriver) GetOtherConfig() (map[string]string, error) {
 	selectOper := libovsdb.Operation{
 		Op:      "select",
