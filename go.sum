@@ -9,8 +9,8 @@ github.com/cenkalti/rpc2 v0.0.0-20210604223624-c1acbc6ec984/go.mod h1:v2npkhrXyk
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/everoute/libOpenflow v1.0.1-0.20241023024533-3fff8fcc5e74 h1:d4ZkDRNWQTZGsQF7ioTzkmgMFVaJuh73v5XRlKo0ze4=
-github.com/everoute/libOpenflow v1.0.1-0.20241023024533-3fff8fcc5e74/go.mod h1:Glli90eKTMhkETRmgjf2DgHTf+PDCQUv6nZvubrLuuA=
+github.com/everoute/libOpenflow v1.0.1-0.20250416030415-66392a2dfa3c h1:9FJM6bllEHvloqoEYwbGtk0A76VbLlXwO4AcreRsw3Q=
+github.com/everoute/libOpenflow v1.0.1-0.20250416030415-66392a2dfa3c/go.mod h1:RkHgztpIL/ytBjFGlc/Wc0ycgKCWDsnxpABce66evTM=
 github.com/everoute/libovsdb v0.0.0-20230109020235-5be40f26b455 h1:x6peVyYZSmva1OJJZ2CCNPs4m+tvWEHJ1s5tX5j629s=
 github.com/everoute/libovsdb v0.0.0-20230109020235-5be40f26b455/go.mod h1:qV7bn/XogGqNiuk52aU4x8WqOb2JEU1CYDpf8D1jkRg=
 github.com/go-logr/logr v0.1.0/go.mod h1:ixOQHD9gLJUVQQ2ZOR7zLEifBX6tGkNJF4QyIY7sIas=
@@ -35,8 +35,9 @@ github.com/stretchr/testify v1.8.2 h1:+h33VjcLVPDHtOdpUCuF+7gSuG3yGIftsP1YvFihtJ
 github.com/stretchr/testify v1.8.2/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 golang.org/x/exp v0.0.0-20240409090435-93d18d7e34b8 h1:ESSUROHIBHg7USnszlcdmjBEwdMj9VUvU+OPk4yl2mc=
 golang.org/x/exp v0.0.0-20240409090435-93d18d7e34b8/go.mod h1:/lliqkxwWAhPjf5oSOIJup2XcqJaw8RGS6k3TGEc7GI=
-golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 h1:0A+M6Uqn+Eje4kHMK80dtF3JCXC4ykBgQG4Fe06QRhQ=
 golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.1.0 h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
+golang.org/x/sys v0.1.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
