@@ -55,9 +55,11 @@ type FlowMatch struct {
 	Ipv6SaMask     *net.IP           // IPv6 source mask
 	Ipv6Da         *net.IP           // IPv6 dest addr
 	Ipv6DaMask     *net.IP           // IPv6 dest mask
+	Ipv6Flabel     *uint32           // IPv6 flow label
+	Ipv6FlabelMask *uint32           // IPv6 flow label mask
 	IpProto        uint8             // IP protocol
-	IcmpCode       uint8             // ICMP code
-	IcmpType       uint8             // ICMP type
+	IcmpCode       *uint8            // ICMP code
+	IcmpType       *uint8            // ICMP type
 	IpDscp         uint8             // DSCP/TOS field
 	TcpSrcPort     uint16            // TCP source port
 	TcpSrcPortMask uint16            // TCP source port mask
@@ -383,6 +385,11 @@ func (self *Flow) xlateMatch() openflow13.Match {
 		}
 	}
 
+	if self.Match.Ipv6Flabel != nil {
+		ipv6FlabelField := openflow13.NewIPV6FlowLabelField(*self.Match.Ipv6Flabel, self.Match.Ipv6FlabelMask)
+		ofMatch.AddField(*ipv6FlabelField)
+	}
+
 	// Handle IPv6 Src
 	if self.Match.Ipv6Sa != nil {
 		if self.Match.Ipv6SaMask != nil {
@@ -407,12 +414,12 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	}
 
 	// icmp code and type
-	if self.Match.IcmpCode != 0 {
-		icmpCodeField := openflow13.NewIcmpCodeField(self.Match.IcmpCode)
+	if self.Match.IcmpCode != nil {
+		icmpCodeField := openflow13.NewIcmpCodeField(*self.Match.IcmpCode)
 		ofMatch.AddField(*icmpCodeField)
 	}
-	if self.Match.IcmpType != 0 {
-		icmpTypeField := openflow13.NewIcmpTypeField(self.Match.IcmpType)
+	if self.Match.IcmpType != nil {
+		icmpTypeField := openflow13.NewIcmpTypeField(*self.Match.IcmpType)
 		ofMatch.AddField(*icmpTypeField)
 	}
 
