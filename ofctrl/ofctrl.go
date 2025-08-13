@@ -341,8 +341,14 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// This shouldn't happen. If it does, both the controller
 			// and switch are no longer communicating. The TCPConn is
 			// still established though.
-			log.Warnln("Connection timed out.")
-			return
+			log.Warnln("Connection timed out. try send hello again")
+			h, err := common.NewHello(4)
+			if err != nil {
+				log.Warnln("zjjj new hello failed")
+				continue
+			}
+			stream.Outbound <- h
+			log.Warnln("zjjj success send hello again")
 		}
 	}
 }
