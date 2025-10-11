@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM registry.smtx.io/sdn-base/ubuntu:20.04
 
 # Install golang
 

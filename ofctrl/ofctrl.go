@@ -80,6 +80,7 @@ type AppInterface interface {
 type Option func(opt *options)
 
 type Controller struct {
+	sw          *OFSwitch
 	app         AppInterface
 	listener    *net.TCPListener
 	wg          sync.WaitGroup
@@ -188,6 +189,11 @@ func (c *Controller) Connect(sock string) {
 				continue
 			}
 		case <-c.exitCtx.Done():
+			c.wg.Wait()
+			if c.sw != nil {
+				c.sw.Disconnect()
+				log.Println("switch disconnected")
+			}
 			log.Println("Controller is delete")
 			return
 		}
@@ -315,6 +321,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 					reConnChan = c.connCh
 				}
 				s := NewSwitch(c.exitCtx, stream, m.DPID, c.app, reConnChan, c.controllerID, c.optionConfig.disableCleanGroup)
+				c.sw = s
 				if err := s.switchConnected(); err != nil {
 					log.Errorf("Failed to initialize OpenFlow switch %s: %v", m.DPID, err)
 					// Do not send event "ReConnection" in "switchDisconnected", because the event is sent in
