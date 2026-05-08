@@ -22,8 +22,8 @@ import (
 	"math/rand"
 	"net"
 
-	"github.com/contiv/libOpenflow/openflow13"
-	"github.com/contiv/libOpenflow/protocol"
+	openflow "antrea.io/libOpenflow/openflow15"
+	"antrea.io/libOpenflow/protocol"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -67,7 +67,7 @@ type PacketOut struct {
 	DstMac  net.HardwareAddr
 	Header  *PacketHeader
 
-	Actions []openflow13.Action
+	Actions []openflow.Action
 }
 
 // RegField specifies a bit range of a register. regID is the register number, and rng is the range of bits
@@ -142,8 +142,13 @@ func ConstructPacketOut(packet *Packet) *PacketOut {
 
 func SendPacket(sw *OFSwitch, packetOut *PacketOut) error {
 	// generate openflow packetOut from ofctrl packet out
-	ofPacketOut := openflow13.NewPacketOut()
-	ofPacketOut.InPort = packetOut.InPort
+	ofPacketOut := openflow.NewPacketOut()
+	ofPacketOut.Match = *openflow.NewMatch()
+	inPort := packetOut.InPort
+	if inPort == 0 {
+		inPort = openflow.P_CONTROLLER
+	}
+	ofPacketOut.Match.AddField(*openflow.NewInPortField(inPort))
 
 	ofPacketOut.Data = GeneratePacketOutData(packetOut)
 	for _, action := range packetOut.Actions {
@@ -151,10 +156,10 @@ func SendPacket(sw *OFSwitch, packetOut *PacketOut) error {
 	}
 	if packetOut.OutPort != nil {
 		log.Infof("send packet to port %v", *packetOut.OutPort)
-		ofPacketOut.AddAction(openflow13.NewActionOutput(*packetOut.OutPort))
+		ofPacketOut.AddAction(openflow.NewActionOutput(*packetOut.OutPort))
 	} else {
-		// default send packet to first table. openflow13 spec defined
-		ofPacketOut.AddAction(openflow13.NewActionOutput(openflow13.P_TABLE))
+		// default send packet to first table. openflow spec defined
+		ofPacketOut.AddAction(openflow.NewActionOutput(openflow.P_TABLE))
 	}
 	for _, action := range ofPacketOut.Actions {
 		log.Infof("send packetout action %v", action)
@@ -298,7 +303,7 @@ func GetMatchRegField(matchers *Matchers, field *RegField) *MatchField {
 	return matchers.GetMatchByName(field.GetNXFieldName())
 }
 
-func GetRegValue(regMatch *MatchField, rng *openflow13.NXRange) (uint32, error) {
+func GetRegValue(regMatch *MatchField, rng *openflow.NXRange) (uint32, error) {
 	regValue, ok := regMatch.GetValue().(*NXRegister)
 	if !ok {
 		return 0, errors.New("register value cannot be got")

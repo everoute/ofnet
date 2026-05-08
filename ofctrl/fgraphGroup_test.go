@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "antrea.io/libOpenflow/openflow15"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -65,17 +65,17 @@ func TestCreateDeleteGroup(t *testing.T) {
 		{
 			name:   "group type all",
 			gpId:   4,
-			gpType: openflow13.OFPGT_ALL,
+			gpType: openflow.GT_ALL,
 			exType: "all",
 		}, {
 			name:   "group type select",
 			gpId:   6,
-			gpType: openflow13.OFPGT_SELECT,
+			gpType: openflow.GT_SELECT,
 			exType: "select",
 		}, {
 			name:   "group type ff",
 			gpId:   3,
-			gpType: openflow13.OFPGT_FF,
+			gpType: openflow.GT_FF,
 			exType: "ff",
 		},
 	}
@@ -100,7 +100,7 @@ func TestCreateDeleteGroup(t *testing.T) {
 
 		// test add exist group failed
 		if i == 0 {
-			_, err = sw.NewGroup(test.gpId, openflow13.OFPGT_SELECT)
+			_, err = sw.NewGroup(test.gpId, openflow.GT_SELECT)
 			if err == nil {
 				t.Errorf("test: %s, op: add exist group, failed: add exist group should failed, but it success", test.name)
 			}
@@ -129,12 +129,12 @@ func TestAddResetBuckets(t *testing.T) {
 	sw := ofActor.Switch
 	var tableId uint8 = 190
 	var gpId uint32 = 677
-	gp, err := sw.NewGroup(gpId, openflow13.OFPGT_SELECT)
+	gp, err := sw.NewGroup(gpId, openflow.GT_SELECT)
 	assert.Nil(t, err)
 
 	// doesn't send to dp
 	bucket1 := NewBucket(100)
-	loadAct1, _ := NewNXLoadAction("nxm_nx_reg2", 0x50, openflow13.NewNXRange(0, 15))
+	loadAct1, _ := NewNXLoadAction("nxm_nx_reg2", 0x50, openflow.NewNXRange(0, 15))
 	bucket1.AddAction(loadAct1)
 	bucket1.AddAction(NewResubmitAction(nil, &tableId))
 	gp.AddBucket(bucket1)
@@ -150,7 +150,7 @@ func TestAddResetBuckets(t *testing.T) {
 
 	// add bucket and send to dp
 	bucket2 := NewBucket(35)
-	loadAct2, _ := NewNXLoadAction("nxm_nx_reg1", 0xa00003b, openflow13.NewNXRange(0, 31))
+	loadAct2, _ := NewNXLoadAction("nxm_nx_reg1", 0xa00003b, openflow.NewNXRange(0, 31))
 	bucket2.AddAction(loadAct2)
 	gp.AddBucket(bucket2)
 	gpDump, err = ofctrlGroupDump(ovsDriver.OvsBridgeName, fmt.Sprintf("%d", gpId))

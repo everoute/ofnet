@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net"
 
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "antrea.io/libOpenflow/openflow15"
 )
 
 const (
@@ -38,7 +38,7 @@ const (
 
 type Action interface {
 	GetActionType() string
-	ToOfAction() (openflow13.Action, error)
+	ToOfAction() (openflow.Action, error)
 }
 
 type NXController struct {
@@ -53,8 +53,8 @@ func NewControllerAction(controllerID uint16, reason uint8) *NXController {
 	}
 }
 
-func (a *NXController) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewNXActionController(a.id), nil
+func (a *NXController) ToOfAction() (openflow.Action, error) {
+	return openflow.NewNXActionController(a.id), nil
 }
 
 func (a *NXController) GetActionType() string {
@@ -72,8 +72,8 @@ func NewOutputAction(outputPort uint32) *OutputAction {
 	return outputAction
 }
 
-func (a *OutputAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewActionOutput(a.outputPort), nil
+func (a *OutputAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewActionOutput(a.outputPort), nil
 }
 
 func (a *OutputAction) GetActionType() string {
@@ -86,12 +86,52 @@ func NewCTClearAction() *CTClearAction {
 	return &CTClearAction{}
 }
 
-func (a *CTClearAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewNXActionCTClear(), nil
+func (a *CTClearAction) ToOfAction() (openflow.Action, error) {
+	return newNXActionCTClear(), nil
 }
 
 func (a *CTClearAction) GetActionType() string {
 	return ActTypeCTClear
+}
+
+type nxActionCTClear struct {
+	*openflow.NXActionHeader
+	zeros [4]uint8
+}
+
+func newNXActionCTClear() *nxActionCTClear {
+	a := &nxActionCTClear{
+		NXActionHeader: openflow.NewNxActionHeader(openflow.NXAST_CT_CLEAR),
+	}
+	a.Length = 16
+	return a
+}
+
+func (a *nxActionCTClear) Len() uint16 {
+	return a.Length
+}
+
+func (a *nxActionCTClear) MarshalBinary() ([]byte, error) {
+	data := make([]byte, int(a.Len()))
+	header, err := a.NXActionHeader.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	copy(data, header)
+	copy(data[len(header):], a.zeros[:])
+	return data, nil
+}
+
+func (a *nxActionCTClear) UnmarshalBinary(data []byte) error {
+	a.NXActionHeader = new(openflow.NXActionHeader)
+	if err := a.NXActionHeader.UnmarshalBinary(data); err != nil {
+		return err
+	}
+	if len(data) < int(a.Len()) {
+		return errors.New("the []byte is too short to unmarshal a full nxActionCTClear message")
+	}
+	a.zeros = [4]uint8{}
+	return nil
 }
 
 type ConnTrackAction struct {
@@ -99,13 +139,13 @@ type ConnTrackAction struct {
 	Force     bool
 	Table     *uint8
 	Zone      *uint16
-	ZoneField *openflow13.MatchField
-	ZoneRange *openflow13.NXRange
+	ZoneField *openflow.MatchField
+	ZoneRange *openflow.NXRange
 	Alg       *uint16
-	Actions   []openflow13.Action
+	Actions   []openflow.Action
 }
 
-func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, actions ...openflow13.Action) *ConnTrackAction {
+func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, actions ...openflow.Action) *ConnTrackAction {
 	return &ConnTrackAction{
 		Commit:  commit,
 		Force:   force,
@@ -115,9 +155,9 @@ func NewConntrackAction(commit bool, force bool, table *uint8, zone *uint16, act
 	}
 }
 
-func NewConntrackActionWithZoneField(commit bool, force bool, table *uint8, zoneFieldName string, zoneRange *openflow13.NXRange,
-	actions ...openflow13.Action) (*ConnTrackAction, error) {
-	zoneFiled, err := openflow13.FindFieldHeaderByName(zoneFieldName, true)
+func NewConntrackActionWithZoneField(commit bool, force bool, table *uint8, zoneFieldName string, zoneRange *openflow.NXRange,
+	actions ...openflow.Action) (*ConnTrackAction, error) {
+	zoneFiled, err := openflow.FindFieldHeaderByName(zoneFieldName, true)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +175,8 @@ func (a *ConnTrackAction) SetAlg(alg uint16) {
 	a.Alg = &alg
 }
 
-func (a *ConnTrackAction) ToOfAction() (openflow13.Action, error) {
-	ctAction := openflow13.NewNXActionConnTrack()
+func (a *ConnTrackAction) ToOfAction() (openflow.Action, error) {
+	ctAction := openflow.NewNXActionConnTrack()
 
 	if a.Commit {
 		ctAction.Commit()
@@ -175,8 +215,8 @@ func NewPushVlanAction(etherType uint16) *PushVlanAction {
 	return &PushVlanAction{etherType}
 }
 
-func (a *PushVlanAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewActionPushVlan(a.etherType), nil
+func (a *PushVlanAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewActionPushVlan(a.etherType), nil
 }
 
 func (a *PushVlanAction) GetActionType() string {
@@ -191,9 +231,9 @@ func NewSetVlanAction(vlanID uint16) *SetVlanAction {
 	return &SetVlanAction{vlanID}
 }
 
-func (a *SetVlanAction) ToOfAction() (openflow13.Action, error) {
-	vlanField := openflow13.NewVlanIdField(a.vlanID, nil)
-	return openflow13.NewActionSetField(*vlanField), nil
+func (a *SetVlanAction) ToOfAction() (openflow.Action, error) {
+	vlanField := openflow.NewVlanIdField(a.vlanID, nil)
+	return openflow.NewActionSetField(*vlanField), nil
 }
 
 func (a *SetVlanAction) GetActionType() string {
@@ -206,8 +246,8 @@ func NewPopVlanAction() *PopVlanAction {
 	return &PopVlanAction{}
 }
 
-func (a *PopVlanAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewActionPopVlan(), nil
+func (a *PopVlanAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewActionPopVlan(), nil
 }
 
 func (a *PopVlanAction) GetActionType() string {
@@ -222,9 +262,9 @@ func NewSetDstMac(macAddr net.HardwareAddr) *SetDstMac {
 	return &SetDstMac{macAddr}
 }
 
-func (a *SetDstMac) ToOfAction() (openflow13.Action, error) {
-	macDaField := openflow13.NewEthDstField(a.macAddr, nil)
-	return openflow13.NewActionSetField(*macDaField), nil
+func (a *SetDstMac) ToOfAction() (openflow.Action, error) {
+	macDaField := openflow.NewEthDstField(a.macAddr, nil)
+	return openflow.NewActionSetField(*macDaField), nil
 }
 
 func (a *SetDstMac) GetActionType() string {
@@ -239,9 +279,9 @@ func NewSetSrcMac(macAddr net.HardwareAddr) *SetSrcMac {
 	return &SetSrcMac{macAddr}
 }
 
-func (a *SetSrcMac) ToOfAction() (openflow13.Action, error) {
-	macSaField := openflow13.NewEthSrcField(a.macAddr, nil)
-	return openflow13.NewActionSetField(*macSaField), nil
+func (a *SetSrcMac) ToOfAction() (openflow.Action, error) {
+	macSaField := openflow.NewEthSrcField(a.macAddr, nil)
+	return openflow.NewActionSetField(*macSaField), nil
 }
 
 func (a *SetSrcMac) GetActionType() string {
@@ -256,9 +296,9 @@ func NewSetDstIP(ipAddr net.IP) *SetDstIP {
 	return &SetDstIP{ipAddr}
 }
 
-func (a *SetDstIP) ToOfAction() (openflow13.Action, error) {
-	ipDaField := openflow13.NewIpv4DstField(a.ipAddr, nil)
-	return openflow13.NewActionSetField(*ipDaField), nil
+func (a *SetDstIP) ToOfAction() (openflow.Action, error) {
+	ipDaField := openflow.NewIpv4DstField(a.ipAddr, nil)
+	return openflow.NewActionSetField(*ipDaField), nil
 }
 
 func (a *SetDstIP) GetActionType() string {
@@ -273,9 +313,9 @@ func NewSetSrcIP(ipAddr net.IP) *SetSrcIP {
 	return &SetSrcIP{ipAddr}
 }
 
-func (a *SetSrcIP) ToOfAction() (openflow13.Action, error) {
-	ipSaField := openflow13.NewIpv4SrcField(a.ipAddr, nil)
-	return openflow13.NewActionSetField(*ipSaField), nil
+func (a *SetSrcIP) ToOfAction() (openflow.Action, error) {
+	ipSaField := openflow.NewIpv4SrcField(a.ipAddr, nil)
+	return openflow.NewActionSetField(*ipSaField), nil
 }
 
 func (a *SetSrcIP) GetActionType() string {
@@ -290,9 +330,9 @@ func NewSetTunnelID(tunnelID uint64) *SetTunnelID {
 	return &SetTunnelID{tunnelID}
 }
 
-func (a *SetTunnelID) ToOfAction() (openflow13.Action, error) {
-	tunnelIdField := openflow13.NewTunnelIdField(a.tunnelID)
-	return openflow13.NewActionSetField(*tunnelIdField), nil
+func (a *SetTunnelID) ToOfAction() (openflow.Action, error) {
+	tunnelIdField := openflow.NewTunnelIdField(a.tunnelID)
+	return openflow.NewActionSetField(*tunnelIdField), nil
 }
 
 func (a *SetTunnelID) GetActionType() string {
@@ -309,9 +349,9 @@ func NewSetTunnelDstIP(dstIP net.IP) *SetTunnelDstIP {
 	}
 }
 
-func (a *SetTunnelDstIP) ToOfAction() (openflow13.Action, error) {
-	tunnelDstIPv4 := openflow13.NewTunnelIpv4DstField(a.tunnelDstIP, nil)
-	return openflow13.NewActionSetField(*tunnelDstIPv4), nil
+func (a *SetTunnelDstIP) ToOfAction() (openflow.Action, error) {
+	tunnelDstIPv4 := openflow.NewTunnelIpv4DstField(a.tunnelDstIP, nil)
+	return openflow.NewActionSetField(*tunnelDstIPv4), nil
 }
 
 func (a *SetTunnelDstIP) GetActionType() string {
@@ -327,7 +367,7 @@ func NewSetMetadata(metadata, metadataMask uint64) *SetMetadata {
 	return &SetMetadata{metadata, metadataMask}
 }
 
-func (a *SetMetadata) ToOfAction() (openflow13.Action, error) {
+func (a *SetMetadata) ToOfAction() (openflow.Action, error) {
 	return nil, errors.New("not support for action: setMetadata")
 }
 
@@ -343,9 +383,9 @@ func NewSetDscp(dscp uint8) *SetDscp {
 	return &SetDscp{dscp}
 }
 
-func (a *SetDscp) ToOfAction() (openflow13.Action, error) {
-	ipDscpField := openflow13.NewIpDscpField(a.dscp)
-	return openflow13.NewActionSetField(*ipDscpField), nil
+func (a *SetDscp) ToOfAction() (openflow.Action, error) {
+	ipDscpField := openflow.NewIpDscpField(a.dscp, nil)
+	return openflow.NewActionSetField(*ipDscpField), nil
 }
 
 func (a *SetDscp) GetActionType() string {
@@ -360,9 +400,9 @@ func NewSetTCPSrc(l4Port uint16) *SetTCPSrc {
 	return &SetTCPSrc{l4Port}
 }
 
-func (a *SetTCPSrc) ToOfAction() (openflow13.Action, error) {
-	tcpSrcField := openflow13.NewTcpSrcField(a.l4Port)
-	return openflow13.NewActionSetField(*tcpSrcField), nil
+func (a *SetTCPSrc) ToOfAction() (openflow.Action, error) {
+	tcpSrcField := openflow.NewTcpSrcField(a.l4Port)
+	return openflow.NewActionSetField(*tcpSrcField), nil
 }
 
 func (a *SetTCPSrc) GetActionType() string {
@@ -377,9 +417,9 @@ func NewSetTCPDst(l4Port uint16) *SetTCPDst {
 	return &SetTCPDst{l4Port}
 }
 
-func (a *SetTCPDst) ToOfAction() (openflow13.Action, error) {
-	tcpDstField := openflow13.NewTcpDstField(a.l4Port)
-	return openflow13.NewActionSetField(*tcpDstField), nil
+func (a *SetTCPDst) ToOfAction() (openflow.Action, error) {
+	tcpDstField := openflow.NewTcpDstField(a.l4Port)
+	return openflow.NewActionSetField(*tcpDstField), nil
 }
 
 func (a *SetTCPDst) GetActionType() string {
@@ -394,9 +434,9 @@ func NewSetUDPSrc(l4Port uint16) *SetUDPSrc {
 	return &SetUDPSrc{l4Port}
 }
 
-func (a *SetUDPSrc) ToOfAction() (openflow13.Action, error) {
-	udpSrcField := openflow13.NewUdpSrcField(a.l4Port)
-	return openflow13.NewActionSetField(*udpSrcField), nil
+func (a *SetUDPSrc) ToOfAction() (openflow.Action, error) {
+	udpSrcField := openflow.NewUdpSrcField(a.l4Port)
+	return openflow.NewActionSetField(*udpSrcField), nil
 }
 
 func (a *SetUDPSrc) GetActionType() string {
@@ -411,9 +451,9 @@ func NewSetUDPDst(l4Port uint16) *SetUDPDst {
 	return &SetUDPDst{l4Port}
 }
 
-func (a *SetUDPDst) ToOfAction() (openflow13.Action, error) {
-	udpDstField := openflow13.NewUdpDstField(a.l4Port)
-	return openflow13.NewActionSetField(*udpDstField), nil
+func (a *SetUDPDst) ToOfAction() (openflow.Action, error) {
+	udpDstField := openflow.NewUdpDstField(a.l4Port)
+	return openflow.NewActionSetField(*udpDstField), nil
 }
 
 func (a *SetUDPDst) GetActionType() string {
@@ -429,13 +469,13 @@ type ResubmitAction struct {
 func NewResubmitAction(inPort *uint16, table *uint8) *ResubmitAction {
 	resubmit := new(ResubmitAction)
 	if inPort == nil {
-		resubmit.inPort = openflow13.OFPP_IN_PORT
+		resubmit.inPort = openflow.OFPP_IN_PORT
 	} else {
 		resubmit.inPort = *inPort
 	}
 
 	if table == nil {
-		resubmit.tableId = openflow13.OFPTT_ALL
+		resubmit.tableId = openflow.OFPTT_ALL
 	} else {
 		resubmit.tableId = *table
 	}
@@ -443,8 +483,8 @@ func NewResubmitAction(inPort *uint16, table *uint8) *ResubmitAction {
 	return resubmit
 }
 
-func (a *ResubmitAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewNXActionResubmitTableAction(a.inPort, a.tableId), nil
+func (a *ResubmitAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewNXActionResubmitTableAction(a.inPort, a.tableId), nil
 }
 
 func (a *ResubmitAction) GetActionType() string {
@@ -461,7 +501,7 @@ type LearnAction struct {
 	pad            uint8
 	finIdleTimeout uint16
 	finHardTimeout uint16
-	specs          []*openflow13.NXLearnSpec
+	specs          []*openflow.NXLearnSpec
 	pad2           []byte
 }
 
@@ -482,8 +522,8 @@ func NewLearnAction(tableId uint8, priority, idleTimeout, hardTimeout, finIdleTi
 	}
 }
 
-func (a *LearnAction) ToOfAction() (openflow13.Action, error) {
-	learnAction := openflow13.NewNXActionLearn()
+func (a *LearnAction) ToOfAction() (openflow.Action, error) {
+	learnAction := openflow.NewNXActionLearn()
 	learnAction.IdleTimeout = a.idleTimeout
 	learnAction.HardTimeout = a.hardTimeout
 	learnAction.Priority = a.priority
@@ -501,26 +541,26 @@ func (a *LearnAction) GetActionType() string {
 }
 
 func (a *LearnAction) AddLearnedLoadAction(learnDstField *LearnField, learnBitLen uint16, learnSrcField *LearnField, learnSrcValue []byte) error {
-	dstMatchField, err := openflow13.FindFieldHeaderByName(learnDstField.Name, true)
+	dstMatchField, err := openflow.FindFieldHeaderByName(learnDstField.Name, true)
 	if err != nil {
 		return err
 	}
-	dstField := &openflow13.NXLearnSpecField{
+	dstField := &openflow.NXLearnSpecField{
 		Field: dstMatchField,
 		Ofs:   learnDstField.Start,
 	}
 
-	var learnSpec *openflow13.NXLearnSpec
+	var learnSpec *openflow.NXLearnSpec
 	if learnSrcValue != nil {
-		header := openflow13.NewLearnHeaderLoadFromValue(learnBitLen)
+		header := openflow.NewLearnHeaderLoadFromValue(learnBitLen)
 		learnSpec = getLearnSpecWithValue(header, dstField, learnSrcValue)
 	} else {
-		header := openflow13.NewLearnHeaderLoadFromField(learnBitLen)
-		srcMatchField, err := openflow13.FindFieldHeaderByName(learnSrcField.Name, true)
+		header := openflow.NewLearnHeaderLoadFromField(learnBitLen)
+		srcMatchField, err := openflow.FindFieldHeaderByName(learnSrcField.Name, true)
 		if err != nil {
 			return err
 		}
-		srcField := &openflow13.NXLearnSpecField{
+		srcField := &openflow.NXLearnSpecField{
 			Field: srcMatchField,
 			Ofs:   learnSrcField.Start,
 		}
@@ -533,21 +573,21 @@ func (a *LearnAction) AddLearnedLoadAction(learnDstField *LearnField, learnBitLe
 }
 
 func (a *LearnAction) SetDeleteLearned() {
-	a.flags |= openflow13.NX_LEARN_F_DELETE_LEARNED
+	a.flags |= openflow.NX_LEARN_F_DELETE_LEARNED
 }
 
 func (a *LearnAction) AddLearnedOutputAction(learnSrcField *LearnField, learnBitLen uint16) error {
-	srcMatchField, err := openflow13.FindFieldHeaderByName(learnSrcField.Name, true)
+	srcMatchField, err := openflow.FindFieldHeaderByName(learnSrcField.Name, true)
 	if err != nil {
 		return err
 	}
-	srcField := &openflow13.NXLearnSpecField{
+	srcField := &openflow.NXLearnSpecField{
 		Field: srcMatchField,
 		Ofs:   learnSrcField.Start,
 	}
-	header := openflow13.NewLearnHeaderOutputFromField(learnBitLen)
+	header := openflow.NewLearnHeaderOutputFromField(learnBitLen)
 
-	learnSpec := &openflow13.NXLearnSpec{
+	learnSpec := &openflow.NXLearnSpec{
 		Header:   header,
 		SrcField: srcField,
 	}
@@ -558,27 +598,27 @@ func (a *LearnAction) AddLearnedOutputAction(learnSrcField *LearnField, learnBit
 }
 
 func (a *LearnAction) AddLearnedMatch(learnDstField *LearnField, learnBitLen uint16, learnSrcField *LearnField, learnSrcValue []byte) error {
-	dstMatchField, err := openflow13.FindFieldHeaderByName(learnDstField.Name, true)
+	dstMatchField, err := openflow.FindFieldHeaderByName(learnDstField.Name, true)
 	if err != nil {
 		return err
 	}
 
-	dstField := &openflow13.NXLearnSpecField{
+	dstField := &openflow.NXLearnSpecField{
 		Field: dstMatchField,
 		Ofs:   learnDstField.Start,
 	}
 
-	var learnSpec *openflow13.NXLearnSpec
+	var learnSpec *openflow.NXLearnSpec
 	if learnSrcValue != nil {
-		header := openflow13.NewLearnHeaderMatchFromValue(learnBitLen)
+		header := openflow.NewLearnHeaderMatchFromValue(learnBitLen)
 		learnSpec = getLearnSpecWithValue(header, dstField, learnSrcValue)
 	} else {
-		header := openflow13.NewLearnHeaderMatchFromField(learnBitLen)
-		srcMatchField, err := openflow13.FindFieldHeaderByName(learnSrcField.Name, true)
+		header := openflow.NewLearnHeaderMatchFromField(learnBitLen)
+		srcMatchField, err := openflow.FindFieldHeaderByName(learnSrcField.Name, true)
 		if err != nil {
 			return err
 		}
-		srcField := &openflow13.NXLearnSpecField{
+		srcField := &openflow.NXLearnSpecField{
 			Field: srcMatchField,
 			Ofs:   learnSrcField.Start,
 		}
@@ -590,16 +630,16 @@ func (a *LearnAction) AddLearnedMatch(learnDstField *LearnField, learnBitLen uin
 	return nil
 }
 
-func getLearnSpecWithValue(header *openflow13.NXLearnSpecHeader, dstField *openflow13.NXLearnSpecField, srcValue []byte) *openflow13.NXLearnSpec {
-	return &openflow13.NXLearnSpec{
+func getLearnSpecWithValue(header *openflow.NXLearnSpecHeader, dstField *openflow.NXLearnSpecField, srcValue []byte) *openflow.NXLearnSpec {
+	return &openflow.NXLearnSpec{
 		Header:   header,
 		DstField: dstField,
 		SrcValue: srcValue,
 	}
 }
 
-func getLearnSpecWithField(header *openflow13.NXLearnSpecHeader, dstField *openflow13.NXLearnSpecField, srcField *openflow13.NXLearnSpecField) *openflow13.NXLearnSpec {
-	return &openflow13.NXLearnSpec{
+func getLearnSpecWithField(header *openflow.NXLearnSpecHeader, dstField *openflow.NXLearnSpecField, srcField *openflow.NXLearnSpecField) *openflow.NXLearnSpec {
+	return &openflow.NXLearnSpec{
 		Header:   header,
 		DstField: dstField,
 		SrcField: srcField,
@@ -607,14 +647,14 @@ func getLearnSpecWithField(header *openflow13.NXLearnSpecHeader, dstField *openf
 }
 
 type NXLoadAction struct {
-	Field    *openflow13.MatchField
+	Field    *openflow.MatchField
 	Value    uint64
-	Range    *openflow13.NXRange
+	Range    *openflow.NXRange
 	Appended bool
 }
 
-func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
-	field, err := openflow13.FindFieldHeaderByName(fieldName, true)
+func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow.NXRange) (*NXLoadAction, error) {
+	field, err := openflow.FindFieldHeaderByName(fieldName, true)
 	if err != nil {
 		return nil, err
 	}
@@ -626,8 +666,8 @@ func NewNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRang
 	}, nil
 }
 
-func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow13.NXRange) (*NXLoadAction, error) {
-	field, err := openflow13.FindFieldHeaderByName(fieldName, true)
+func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow.NXRange) (*NXLoadAction, error) {
+	field, err := openflow.FindFieldHeaderByName(fieldName, true)
 	if err != nil {
 		return nil, err
 	}
@@ -640,9 +680,9 @@ func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow1
 	}, nil
 }
 
-func (a *NXLoadAction) ToOfAction() (openflow13.Action, error) {
+func (a *NXLoadAction) ToOfAction() (openflow.Action, error) {
 	ofsBits := a.Range.ToOfsBits()
-	return openflow13.NewNXActionRegLoad(ofsBits, a.Field, a.Value), nil
+	return openflow.NewNXActionRegLoad(ofsBits, a.Field, a.Value), nil
 }
 
 func (a *NXLoadAction) GetActionType() string {
@@ -653,16 +693,16 @@ type NXMoveAction struct {
 	Length    uint16
 	SrcOffset uint16
 	DstOffset uint16
-	SrcField  *openflow13.MatchField
-	DstField  *openflow13.MatchField
+	SrcField  *openflow.MatchField
+	DstField  *openflow.MatchField
 }
 
 func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string, hasMask bool) (*NXMoveAction, error) {
-	srcMatchField, err := openflow13.FindFieldHeaderByName(srcMatchFieldName, hasMask)
+	srcMatchField, err := openflow.FindFieldHeaderByName(srcMatchFieldName, hasMask)
 	if err != nil {
 		return nil, err
 	}
-	dstMatchField, err := openflow13.FindFieldHeaderByName(dstMatchFieldName, hasMask)
+	dstMatchField, err := openflow.FindFieldHeaderByName(dstMatchFieldName, hasMask)
 	if err != nil {
 		return nil, err
 	}
@@ -676,8 +716,8 @@ func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dst
 	}, nil
 }
 
-func (a *NXMoveAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewNXActionRegMove(a.Length, a.SrcOffset, a.DstOffset, a.SrcField, a.DstField), nil
+func (a *NXMoveAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewNXActionRegMove(a.Length, a.SrcOffset, a.DstOffset, a.SrcField, a.DstField), nil
 }
 
 func (a *NXMoveAction) GetActionType() string {
@@ -692,8 +732,8 @@ func NewGroupAction(groupID uint32) *GroupAction {
 	return &GroupAction{groupID}
 }
 
-func (a *GroupAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewActionGroup(a.groupID), nil
+func (a *GroupAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewActionGroup(a.groupID), nil
 }
 
 func (a *GroupAction) GetActionType() string {
@@ -773,8 +813,8 @@ func (n *NXCTNatAction) GetActionType() string {
 	return ActTypeCTNAT
 }
 
-func (n *NXCTNatAction) ToOfAction() (openflow13.Action, error) {
-	act := openflow13.NewNXActionCTNAT()
+func (n *NXCTNatAction) ToOfAction() (openflow.Action, error) {
+	act := openflow.NewNXActionCTNAT()
 	if n.isSNat {
 		act.SetSNAT()
 	}
@@ -806,8 +846,8 @@ func (d *DecTtlAction) GetActionType() string {
 	return d.ActionType
 }
 
-func (d *DecTtlAction) ToOfAction() (openflow13.Action, error) {
-	return openflow13.NewActionDecNwTtl(), nil
+func (d *DecTtlAction) ToOfAction() (openflow.Action, error) {
+	return openflow.NewActionDecNwTtl(), nil
 }
 
 func NewDecNwTtlAction(actionType string) *DecTtlAction {

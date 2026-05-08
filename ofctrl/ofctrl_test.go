@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "antrea.io/libOpenflow/openflow15"
 	"github.com/contiv/ofnet/ovsdbDriver"
 	log "github.com/sirupsen/logrus"
 )
@@ -52,7 +52,7 @@ func (o *OfActor) SwitchConnected(sw *OFSwitch) {
 	o.isSwitchConnected = true
 }
 
-func (o *OfActor) MultipartReply(sw *OFSwitch, rep *openflow13.MultipartReply) {
+func (o *OfActor) MultipartReply(sw *OFSwitch, rep *openflow.MultipartReply) {
 }
 
 func (o *OfActor) SwitchDisconnected(sw *OFSwitch) {
@@ -67,9 +67,9 @@ var ovsDriver *ovsdbDriver.OvsDriver
 func runOfctlCmd(cmd, brName string, args ...string) ([]byte, error) {
 	var cmdStr string
 	if len(args) == 0 {
-		cmdStr = fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow13 %s %s", cmd, brName)
+		cmdStr = fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow15 %s %s", cmd, brName)
 	} else if len(args) == 1 {
-		cmdStr = fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow13 %s %s %s", cmd, brName, args[0])
+		cmdStr = fmt.Sprintf("sudo /usr/bin/ovs-ofctl -O Openflow15 %s %s %s", cmd, brName, args[0])
 	} else {
 		return nil, errors.New("error params")
 	}
@@ -304,10 +304,10 @@ func TestCreateDeleteFlow(t *testing.T) {
 
 	// newflow with flowid
 	idFlow, err := ofActor.inputTable.NewFlowWithFlowID(FlowMatch{
-		Priority:     100,
-		Ethertype:    0x0800,
-		IpProto:      6,
-		TcpDstPort:   8080,
+		Priority:   100,
+		Ethertype:  0x0800,
+		IpProto:    6,
+		TcpDstPort: 8080,
 	}, 0x80)
 	if err != nil {
 		t.Errorf("Error creating flow with flowid")
@@ -706,7 +706,7 @@ func TestMatchSetUdpFields(t *testing.T) {
 }
 
 func TestSetGroup(t *testing.T) {
-	group, _ := ofActor.Switch.NewGroup(2, openflow13.OFPGT_SELECT)
+	group, _ := ofActor.Switch.NewGroup(2, openflow.GT_SELECT)
 	group.Install()
 
 	flow, _ := ofActor.inputTable.NewFlow(FlowMatch{
@@ -728,7 +728,7 @@ func TestCTWithZoneFiled(t *testing.T) {
 		Ethertype: 0x0800,
 	})
 	var tableID uint8 = 1
-	ctAct, err := NewConntrackActionWithZoneField(false, false, &tableID, "nxm_nx_reg0", openflow13.NewNXRange(0, 15))
+	ctAct, err := NewConntrackActionWithZoneField(false, false, &tableID, "nxm_nx_reg0", openflow.NewNXRange(0, 15))
 	if err != nil {
 		t.Errorf("new ct action failed: %v", err)
 	}

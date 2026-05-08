@@ -17,13 +17,15 @@ package ofctrl
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
-	"github.com/contiv/libOpenflow/common"
-	"github.com/contiv/libOpenflow/openflow13"
-	"github.com/contiv/libOpenflow/util"
+	"antrea.io/libOpenflow/common"
+	openflow "antrea.io/libOpenflow/openflow15"
+	"antrea.io/libOpenflow/util"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
 	log "github.com/sirupsen/logrus"
@@ -54,6 +56,9 @@ type OFSwitch struct {
 	tlvMgr *tlvMapMgr
 
 	disableCleanGroup bool
+
+	txLock  sync.Mutex
+	txChans map[uint32]chan MessageResult
 }
 
 var switchDb cmap.ConcurrentMap[string, *OFSwitch]
@@ -77,6 +82,7 @@ func NewSwitch(pctx context.Context, stream *util.MessageStream, dpid net.Hardwa
 
 		s.ControllerID = id
 		s.disableCleanGroup = disableCleanGroup
+		s.txChans = make(map[uint32]chan MessageResult)
 
 		// Initialize the fgraph elements
 		s.initFgraph()
@@ -87,6 +93,9 @@ func NewSwitch(pctx context.Context, stream *util.MessageStream, dpid net.Hardwa
 		log.Infoln("Openflow re-connection for switch:", dpid)
 		s.stream = stream
 		s.dpid = dpid
+	}
+	if s.txChans == nil {
+		s.txChans = make(map[uint32]chan MessageResult)
 	}
 
 	s.ctx, s.cancel = context.WithCancel(pctx)
@@ -139,10 +148,10 @@ func (self *OFSwitch) switchConnected() error {
 	go self.echoRequest()
 
 	// Send new feature request
-	if err := self.Send(openflow13.NewFeaturesRequest()); err != nil {
+	if err := self.Send(openflow.NewFeaturesRequest()); err != nil {
 		return err
 	}
-	if err := self.Send(openflow13.NewEchoRequest()); err != nil {
+	if err := self.Send(openflow.NewEchoRequest()); err != nil {
 		return err
 	}
 
@@ -168,7 +177,7 @@ func (self *OFSwitch) echoRequest() {
 	for {
 		select {
 		case <-timer.C:
-			self.Send(openflow13.NewEchoRequest())
+			self.Send(openflow.NewEchoRequest())
 		case <-self.ctx.Done():
 			return
 		}
@@ -200,78 +209,123 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 	switch t := msg.(type) {
 	case *common.Header:
 		switch t.Header().Type {
-		case openflow13.Type_Hello:
+		case openflow.Type_Hello:
 			// Send Hello response
-			h, err := common.NewHello(4)
+			h, err := common.NewHello(openflow.VERSION)
 			if err != nil {
 				log.Errorf("Error creating hello message")
 			}
 			self.Send(h)
 
-		case openflow13.Type_EchoRequest:
+		case openflow.Type_EchoRequest:
 			// Send echo reply
-			res := openflow13.NewEchoReply()
+			res := openflow.NewEchoReply()
 			self.Send(res)
 
-		case openflow13.Type_EchoReply:
+		case openflow.Type_EchoReply:
 
-		case openflow13.Type_FeaturesRequest:
+		case openflow.Type_FeaturesRequest:
 
-		case openflow13.Type_GetConfigRequest:
+		case openflow.Type_GetConfigRequest:
 
-		case openflow13.Type_BarrierRequest:
+		case openflow.Type_BarrierRequest:
 
-		case openflow13.Type_BarrierReply:
+		case openflow.Type_BarrierReply:
 
 		}
-	case *openflow13.ErrorMsg:
-		log.Errorf("Received OpenFlow1.3 error: %s on msg %s, origin data: %s",
+	case *openflow.ErrorMsg:
+		log.Errorf("Received OpenFlow1.5 error: %s on msg %s, origin data: %s",
 			GetErrorMessage(t.Type, t.Code, 0), GetErrorMessageType(t.Data), t.Data.String())
-	case *openflow13.VendorHeader:
+		result := MessageResult{
+			succeed: false,
+			errType: t.Type,
+			errCode: t.Code,
+			xID:     t.Xid,
+			msgType: UnknownMessage,
+		}
+		errData := t.Data.Bytes()
+		if len(errData) >= 12 {
+			switch errData[1] {
+			case openflow.Type_BundleControl:
+				result.msgType = BundleControlMessage
+				self.publishMessage(binary.BigEndian.Uint32(errData[8:12]), result)
+			case openflow.Type_BundleAddMessage:
+				result.msgType = BundleAddMessage
+				self.publishMessage(binary.BigEndian.Uint32(errData[8:12]), result)
+			}
+		}
+	case *openflow.VendorHeader:
 		switch t.ExperimenterType {
-		case openflow13.Type_TlvTableReply:
-			reply := t.VendorData.(*openflow13.TLVTableReply)
+		case openflow.Type_TlvTableReply:
+			reply := t.VendorData.(*openflow.TLVTableReply)
 			status := TLVTableStatus(*reply)
 			self.tlvMgr.TLVMapReplyRcvd(self, &status)
 		}
 
-	case *openflow13.SwitchFeatures:
+	case *openflow.SwitchFeatures:
 		switch t.Header.Type {
-		case openflow13.Type_FeaturesReply:
-			swConfig := openflow13.NewSetConfig()
+		case openflow.Type_FeaturesReply:
+			swConfig := openflow.NewSetConfig()
 			swConfig.MissSendLen = 128
 			self.Send(swConfig)
-			self.Send(openflow13.NewSetControllerID(self.ControllerID))
+			self.Send(openflow.NewSetControllerID(self.ControllerID))
 		}
 
-	case *openflow13.SwitchConfig:
+	case *openflow.SwitchConfig:
 		switch t.Header.Type {
-		case openflow13.Type_GetConfigReply:
+		case openflow.Type_GetConfigReply:
 
-		case openflow13.Type_SetConfig:
+		case openflow.Type_SetConfig:
 
 		}
-	case *openflow13.PacketIn:
+	case *openflow.PacketIn:
 		log.Debugf("Received packet(ofctrl): %+v", t)
 		// send packet rcvd callback
 		self.app.PacketRcvd(self, (*PacketIn)(t))
 
-	case *openflow13.FlowRemoved:
+	case *openflow.FlowRemoved:
 
-	case *openflow13.PortStatus:
+	case *openflow.PortStatus:
 		// FIXME: This needs to propagated to the app.
-	case *openflow13.PacketOut:
+	case *openflow.PacketOut:
 
-	case *openflow13.FlowMod:
+	case *openflow.FlowMod:
 
-	case *openflow13.PortMod:
+	case *openflow.PortMod:
 
-	case *openflow13.MultipartRequest:
+	case *openflow.MultipartRequest:
 
-	case *openflow13.MultipartReply:
+	case *openflow.MultipartReply:
 		log.Debugf("Received MultipartReply")
 		// send packet rcvd callback
-		self.app.MultipartReply(self, (*openflow13.MultipartReply)(t))
+		self.app.MultipartReply(self, (*openflow.MultipartReply)(t))
+	case *openflow.BundleCtrl:
+		self.publishMessage(t.BundleId, MessageResult{
+			xID:     t.Xid,
+			succeed: true,
+			msgType: BundleControlMessage,
+		})
 
 	}
+}
+
+func (self *OFSwitch) subscribeMessage(xID uint32, msgChan chan MessageResult) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	self.txChans[xID] = msgChan
+}
+
+func (self *OFSwitch) publishMessage(xID uint32, result MessageResult) {
+	self.txLock.Lock()
+	ch, found := self.txChans[xID]
+	self.txLock.Unlock()
+	if found {
+		ch <- result
+	}
+}
+
+func (self *OFSwitch) unSubscribeMessage(xID uint32) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	delete(self.txChans, xID)
 }

@@ -1,6 +1,6 @@
 # Ofctrl
 
-This library implements a simple Openflow1.3 controller API
+This library implements a simple Openflow1.5 controller API
 
 # Usage
 
@@ -31,7 +31,7 @@ This creates a new controller and registers the app for event callbacks. The app
         Switch *ofctrl.OFSwitch
     }
 
-    func (o *OfApp) PacketRcvd(sw *ofctrl.OFSwitch, packet *openflow13.PacketIn) {
+    func (o *OfApp) PacketRcvd(sw *ofctrl.OFSwitch, packet *openflow.PacketIn) {
         log.Printf("App: Received packet: %+v", packet)
     }
 
@@ -64,16 +64,16 @@ Example:
 
     sudo ovs-vsctl set-controller ovsbr0 tcp:127.0.0.1:6633
 
-### To enable openflow1.3 support in OVS:
-`ovs-vsctl set bridge <bridge-name> protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13`
+### To enable openflow1.5 support in OVS:
+`ovs-vsctl set bridge <bridge-name> protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15`
 
 Example:
 
-    sudo ovs-vsctl set bridge ovsbr0 protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13
+    sudo ovs-vsctl set bridge ovsbr0 protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15
 
 # Forwarding Graph API
 An app can install flow table entries into the Openflow switch by using forwarding graph API.
-Forwarding graph is made up of forwarding elements which determine how a packet lookups are done. Forwarding graph is a higher level interface that is converted to Openflow1.3 flows, instructions, groups and actions by the library
+Forwarding graph is made up of forwarding elements which determine how a packet lookups are done. Forwarding graph is a higher level interface that is converted to Openflow1.5 flows, instructions, groups and actions by the library
 
  Forwarding graph is specific to each switch. It is roughly structured as follows
 ```

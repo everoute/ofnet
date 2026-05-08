@@ -4,20 +4,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "antrea.io/libOpenflow/openflow15"
 )
 
 const (
 	messageTimeout = 10 * time.Second
 )
 
-type TLVTableStatus openflow13.TLVTableReply
+type TLVTableStatus openflow.TLVTableReply
 
 type TLVStatusManager interface {
 	TLVMapReplyRcvd(ofSwitch *OFSwitch, status *TLVTableStatus)
 }
 
-func (t *TLVTableStatus) GetTLVMap(index uint16) *openflow13.TLVTableMap {
+func (t *TLVTableStatus) GetTLVMap(index uint16) *openflow.TLVTableMap {
 	for _, m := range t.TlvMaps {
 		if m.Index == index {
 			return m
@@ -50,11 +50,11 @@ func (t *TLVTableStatus) String() string {
 	return value
 }
 
-func (t *TLVTableStatus) GetTLVMapString(m *openflow13.TLVTableMap) string {
+func (t *TLVTableStatus) GetTLVMapString(m *openflow.TLVTableMap) string {
 	return fmt.Sprintf("TLVMap: class=0x%x,type=0x%x,length=0x%x,match_field=%d", m.OptClass, m.OptType, m.OptLength, m.Index)
 }
 
-func (t *TLVTableStatus) AddTLVMap(m *openflow13.TLVTableMap) {
+func (t *TLVTableStatus) AddTLVMap(m *openflow.TLVTableMap) {
 	t.TlvMaps = append(t.TlvMaps, m)
 }
 
@@ -72,13 +72,13 @@ func (s *OFSwitch) AddTunnelTLVMap(optClass uint16, optType uint8, optLength uin
 		}
 		return nil
 	}
-	tlvMap = &openflow13.TLVTableMap{
+	tlvMap = &openflow.TLVTableMap{
 		OptClass:  optClass,
 		OptType:   optType,
 		OptLength: optLength,
 		Index:     tunMetadataIndex,
 	}
-	tlvMaps := []*openflow13.TLVTableMap{
+	tlvMaps := []*openflow.TLVTableMap{
 		{
 			OptClass:  optClass,
 			OptType:   optType,
@@ -86,36 +86,36 @@ func (s *OFSwitch) AddTunnelTLVMap(optClass uint16, optType uint8, optLength uin
 			Index:     tunMetadataIndex,
 		},
 	}
-	tlvMapMod := openflow13.NewTLVTableMod(openflow13.NXTTMC_ADD, tlvMaps)
-	msg := openflow13.NewTLVTableModMessage(tlvMapMod)
+	tlvMapMod := openflow.NewTLVTableMod(openflow.NXTTMC_ADD, tlvMaps)
+	msg := openflow.NewTLVTableModMessage(tlvMapMod)
 	s.Send(msg)
 	s.tlvMgr.status.AddTLVMap(tlvMap)
 	return nil
 }
 
-func (s *OFSwitch) DeleteTunnelTLVMap(tlvMaps []*openflow13.TLVTableMap) {
-	tlvMapMod := openflow13.NewTLVTableMod(openflow13.NXTTMC_DELETE, tlvMaps)
-	msg := openflow13.NewTLVTableModMessage(tlvMapMod)
+func (s *OFSwitch) DeleteTunnelTLVMap(tlvMaps []*openflow.TLVTableMap) {
+	tlvMapMod := openflow.NewTLVTableMod(openflow.NXTTMC_DELETE, tlvMaps)
+	msg := openflow.NewTLVTableModMessage(tlvMapMod)
 	s.Send(msg)
 }
 
-func (s *OFSwitch) ClearTunnelTLVMap(tlvMaps []*openflow13.TLVTableMap) {
-	tlvMapMod := openflow13.NewTLVTableMod(openflow13.NXTTMC_CLEAR, tlvMaps)
-	msg := openflow13.NewTLVTableModMessage(tlvMapMod)
+func (s *OFSwitch) ClearTunnelTLVMap(tlvMaps []*openflow.TLVTableMap) {
+	tlvMapMod := openflow.NewTLVTableMod(openflow.NXTTMC_CLEAR, tlvMaps)
+	msg := openflow.NewTLVTableModMessage(tlvMapMod)
 	s.Send(msg)
 }
 
-func ResetFieldLength(field *openflow13.MatchField, tlvMapStatus *TLVTableStatus) *openflow13.MatchField {
+func ResetFieldLength(field *openflow.MatchField, tlvMapStatus *TLVTableStatus) *openflow.MatchField {
 	if tlvMapStatus == nil {
 		return field
 	}
-	if field.Class != openflow13.OXM_CLASS_NXM_1 {
+	if field.Class != openflow.OXM_CLASS_NXM_1 {
 		return field
 	}
-	if field.Field < openflow13.NXM_NX_TUN_METADATA0 || field.Field > openflow13.NXM_NX_TUN_METADATA7 {
+	if field.Field < openflow.NXM_NX_TUN_METADATA0 || field.Field > openflow.NXM_NX_TUN_METADATA7 {
 		return field
 	}
-	index := field.Field - openflow13.NXM_NX_TUN_METADATA0
+	index := field.Field - openflow.NXM_NX_TUN_METADATA0
 	m := tlvMapStatus.GetTLVMap(uint16(index))
 	if m != nil {
 		field.Length = m.OptLength
@@ -123,14 +123,14 @@ func ResetFieldLength(field *openflow13.MatchField, tlvMapStatus *TLVTableStatus
 	return field
 }
 
-func (s *OFSwitch) ResetFieldLength(field *openflow13.MatchField) *openflow13.MatchField {
+func (s *OFSwitch) ResetFieldLength(field *openflow.MatchField) *openflow.MatchField {
 	if s.tlvMgr.status == nil {
 		return field
 	}
-	if field.Field < openflow13.NXM_NX_TUN_METADATA0 || field.Field > openflow13.NXM_NX_TUN_METADATA7 {
+	if field.Field < openflow.NXM_NX_TUN_METADATA0 || field.Field > openflow.NXM_NX_TUN_METADATA7 {
 		return field
 	}
-	index := field.Field - openflow13.NXM_NX_TUN_METADATA0
+	index := field.Field - openflow.NXM_NX_TUN_METADATA0
 	m := s.tlvMgr.status.GetTLVMap(uint16(index))
 	if m != nil {
 		field.Length = m.OptLength
@@ -159,7 +159,7 @@ func (s *OFSwitch) requestTlvMap() error {
 	if s.tlvMgr == nil {
 		return nil
 	}
-	msg := openflow13.NewTLVTableRequest()
+	msg := openflow.NewTLVTableRequest()
 
 	var err error
 	s.Send(msg)
