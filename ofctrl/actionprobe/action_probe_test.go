@@ -162,6 +162,20 @@ func TestBundleActionCompatibilityWithOVS(t *testing.T) {
 			next: ofctrl.NewEmptyElem(),
 		},
 		{
+			name: "load-pkt-mark",
+			build: func(f *ofctrl.Flow) error {
+				return f.LoadField("nxm_nx_pkt_mark", 0x1, openflow.NewNXRange(28, 28))
+			},
+			next: ofctrl.NewEmptyElem(),
+		},
+		{
+			name: "load-in-port",
+			build: func(f *ofctrl.Flow) error {
+				return f.LoadField("nxm_of_in_port", 0xfffe, openflow.NewNXRange(0, 15))
+			},
+			next: ofctrl.NewEmptyElem(),
+		},
+		{
 			name: "set-field-reg4",
 			build: func(f *ofctrl.Flow) error {
 				field := openflow.NewRegMatchField(4, 0x20, openflow.NewNXRange(0, 15))
