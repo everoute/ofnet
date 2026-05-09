@@ -41,6 +41,79 @@ type Action interface {
 	ToOfAction() (openflow.Action, error)
 }
 
+type rawFieldBytes []byte
+
+func (b rawFieldBytes) Len() uint16 {
+	return uint16(len(b))
+}
+
+func (b rawFieldBytes) MarshalBinary() ([]byte, error) {
+	data := make([]byte, len(b))
+	copy(data, b)
+	return data, nil
+}
+
+func (b rawFieldBytes) UnmarshalBinary(data []byte) error {
+	copy(b, data)
+	return nil
+}
+
+func fieldValueLength(field *openflow.MatchField) uint8 {
+	if field.HasMask {
+		return field.Length / 2
+	}
+	return field.Length
+}
+
+func setSubfieldBit(data []byte, bit uint16) {
+	byteIndex := len(data) - 1 - int(bit/8)
+	data[byteIndex] |= 1 << (bit % 8)
+}
+
+func setSubfieldValue(field *openflow.MatchField, value uint64, rng *openflow.NXRange) (*openflow.MatchField, error) {
+	if rng == nil {
+		return nil, errors.New("nx load action requires a field range")
+	}
+	valueLen := fieldValueLength(field)
+	if valueLen == 0 {
+		return nil, errors.New("nx load action requires a non-empty field")
+	}
+
+	fieldValue := make([]byte, valueLen)
+	fieldMask := make([]byte, valueLen)
+	offset := rng.GetOfs()
+	nbits := rng.GetNbits()
+	if int(offset+nbits) > int(valueLen)*8 {
+		return nil, errors.New("nx load action range exceeds field length")
+	}
+
+	for bit := uint16(0); bit < nbits; bit++ {
+		targetBit := offset + bit
+		if value&(uint64(1)<<bit) != 0 {
+			setSubfieldBit(fieldValue, targetBit)
+		}
+		setSubfieldBit(fieldMask, targetBit)
+	}
+
+	setField := *field
+	setField.HasMask = true
+	setField.Length = valueLen * 2
+	setField.Value = rawFieldBytes(fieldValue)
+	setField.Mask = rawFieldBytes(fieldMask)
+	return &setField, nil
+}
+
+func oxmIDFromMatchField(field *openflow.MatchField) openflow.OxmId {
+	length := fieldValueLength(field)
+	return openflow.OxmId{
+		Class:          field.Class,
+		Field:          field.Field,
+		HasMask:        false,
+		Length:         length,
+		ExperimenterID: field.ExperimenterID,
+	}
+}
+
 type NXController struct {
 	id     uint16
 	reason uint8
@@ -681,8 +754,11 @@ func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow.
 }
 
 func (a *NXLoadAction) ToOfAction() (openflow.Action, error) {
-	ofsBits := a.Range.ToOfsBits()
-	return openflow.NewNXActionRegLoad(ofsBits, a.Field, a.Value), nil
+	field, err := setSubfieldValue(a.Field, a.Value, a.Range)
+	if err != nil {
+		return nil, err
+	}
+	return openflow.NewActionSetField(*field), nil
 }
 
 func (a *NXLoadAction) GetActionType() string {
@@ -717,7 +793,8 @@ func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dst
 }
 
 func (a *NXMoveAction) ToOfAction() (openflow.Action, error) {
-	return openflow.NewNXActionRegMove(a.Length, a.SrcOffset, a.DstOffset, a.SrcField, a.DstField), nil
+	return openflow.NewActionCopyField(a.Length, a.SrcOffset, a.DstOffset,
+		oxmIDFromMatchField(a.SrcField), oxmIDFromMatchField(a.DstField)), nil
 }
 
 func (a *NXMoveAction) GetActionType() string {
