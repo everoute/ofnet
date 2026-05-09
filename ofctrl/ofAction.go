@@ -103,6 +103,14 @@ func setSubfieldValue(field *openflow.MatchField, value uint64, rng *openflow.NX
 	return &setField, nil
 }
 
+func NewOF15LoadAction(field *openflow.MatchField, value uint64, rng *openflow.NXRange) (openflow.Action, error) {
+	setField, err := setSubfieldValue(field, value, rng)
+	if err != nil {
+		return nil, err
+	}
+	return openflow.NewActionSetField(*setField), nil
+}
+
 func oxmIDFromMatchField(field *openflow.MatchField) openflow.OxmId {
 	length := fieldValueLength(field)
 	return openflow.OxmId{
@@ -112,6 +120,11 @@ func oxmIDFromMatchField(field *openflow.MatchField) openflow.OxmId {
 		Length:         length,
 		ExperimenterID: field.ExperimenterID,
 	}
+}
+
+func NewOF15MoveAction(nBits, srcOffset, dstOffset uint16, srcField, dstField *openflow.MatchField) openflow.Action {
+	return openflow.NewActionCopyField(nBits, srcOffset, dstOffset,
+		oxmIDFromMatchField(srcField), oxmIDFromMatchField(dstField))
 }
 
 type NXController struct {
@@ -754,11 +767,7 @@ func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow.
 }
 
 func (a *NXLoadAction) ToOfAction() (openflow.Action, error) {
-	field, err := setSubfieldValue(a.Field, a.Value, a.Range)
-	if err != nil {
-		return nil, err
-	}
-	return openflow.NewActionSetField(*field), nil
+	return NewOF15LoadAction(a.Field, a.Value, a.Range)
 }
 
 func (a *NXLoadAction) GetActionType() string {
@@ -793,8 +802,7 @@ func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dst
 }
 
 func (a *NXMoveAction) ToOfAction() (openflow.Action, error) {
-	return openflow.NewActionCopyField(a.Length, a.SrcOffset, a.DstOffset,
-		oxmIDFromMatchField(a.SrcField), oxmIDFromMatchField(a.DstField)), nil
+	return NewOF15MoveAction(a.Length, a.SrcOffset, a.DstOffset, a.SrcField, a.DstField), nil
 }
 
 func (a *NXMoveAction) GetActionType() string {
