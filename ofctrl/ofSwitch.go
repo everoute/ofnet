@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/libOpenflow/util"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -139,10 +139,10 @@ func (self *OFSwitch) switchConnected() error {
 	go self.echoRequest()
 
 	// Send new feature request
-	if err := self.Send(openflow13.NewFeaturesRequest()); err != nil {
+	if err := self.Send(openflow.NewFeaturesRequest()); err != nil {
 		return err
 	}
-	if err := self.Send(openflow13.NewEchoRequest()); err != nil {
+	if err := self.Send(openflow.NewEchoRequest()); err != nil {
 		return err
 	}
 
@@ -168,7 +168,7 @@ func (self *OFSwitch) echoRequest() {
 	for {
 		select {
 		case <-timer.C:
-			self.Send(openflow13.NewEchoRequest())
+			self.Send(openflow.NewEchoRequest())
 		case <-self.ctx.Done():
 			return
 		}
@@ -200,78 +200,78 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 	switch t := msg.(type) {
 	case *common.Header:
 		switch t.Header().Type {
-		case openflow13.Type_Hello:
+		case openflow.Type_Hello:
 			// Send Hello response
-			h, err := common.NewHello(4)
+			h, err := common.NewHello(openflow.VERSION)
 			if err != nil {
 				log.Errorf("Error creating hello message")
 			}
 			self.Send(h)
 
-		case openflow13.Type_EchoRequest:
+		case openflow.Type_EchoRequest:
 			// Send echo reply
-			res := openflow13.NewEchoReply()
+			res := openflow.NewEchoReply()
 			self.Send(res)
 
-		case openflow13.Type_EchoReply:
+		case openflow.Type_EchoReply:
 
-		case openflow13.Type_FeaturesRequest:
+		case openflow.Type_FeaturesRequest:
 
-		case openflow13.Type_GetConfigRequest:
+		case openflow.Type_GetConfigRequest:
 
-		case openflow13.Type_BarrierRequest:
+		case openflow.Type_BarrierRequest:
 
-		case openflow13.Type_BarrierReply:
+		case openflow.Type_BarrierReply:
 
 		}
-	case *openflow13.ErrorMsg:
-		log.Errorf("Received OpenFlow1.3 error: %s on msg %s, origin data: %s",
+	case *openflow.ErrorMsg:
+		log.Errorf("Received OpenFlow1.5 error: %s on msg %s, origin data: %s",
 			GetErrorMessage(t.Type, t.Code, 0), GetErrorMessageType(t.Data), t.Data.String())
-	case *openflow13.VendorHeader:
+	case *openflow.VendorHeader:
 		switch t.ExperimenterType {
-		case openflow13.Type_TlvTableReply:
-			reply := t.VendorData.(*openflow13.TLVTableReply)
+		case openflow.Type_TlvTableReply:
+			reply := t.VendorData.(*openflow.TLVTableReply)
 			status := TLVTableStatus(*reply)
 			self.tlvMgr.TLVMapReplyRcvd(self, &status)
 		}
 
-	case *openflow13.SwitchFeatures:
+	case *openflow.SwitchFeatures:
 		switch t.Header.Type {
-		case openflow13.Type_FeaturesReply:
-			swConfig := openflow13.NewSetConfig()
+		case openflow.Type_FeaturesReply:
+			swConfig := openflow.NewSetConfig()
 			swConfig.MissSendLen = 128
 			self.Send(swConfig)
-			self.Send(openflow13.NewSetControllerID(self.ControllerID))
+			self.Send(openflow.NewSetControllerID(self.ControllerID))
 		}
 
-	case *openflow13.SwitchConfig:
+	case *openflow.SwitchConfig:
 		switch t.Header.Type {
-		case openflow13.Type_GetConfigReply:
+		case openflow.Type_GetConfigReply:
 
-		case openflow13.Type_SetConfig:
+		case openflow.Type_SetConfig:
 
 		}
-	case *openflow13.PacketIn:
+	case *openflow.PacketIn:
 		log.Debugf("Received packet(ofctrl): %+v", t)
 		// send packet rcvd callback
 		self.app.PacketRcvd(self, (*PacketIn)(t))
 
-	case *openflow13.FlowRemoved:
+	case *openflow.FlowRemoved:
 
-	case *openflow13.PortStatus:
+	case *openflow.PortStatus:
 		// FIXME: This needs to propagated to the app.
-	case *openflow13.PacketOut:
+	case *openflow.PacketOut:
 
-	case *openflow13.FlowMod:
+	case *openflow.FlowMod:
 
-	case *openflow13.PortMod:
+	case *openflow.PortMod:
 
-	case *openflow13.MultipartRequest:
+	case *openflow.MultipartRequest:
 
-	case *openflow13.MultipartReply:
+	case *openflow.MultipartReply:
 		log.Debugf("Received MultipartReply")
 		// send packet rcvd callback
-		self.app.MultipartReply(self, (*openflow13.MultipartReply)(t))
+		self.app.MultipartReply(self, (*openflow.MultipartReply)(t))
 
 	}
 }

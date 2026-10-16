@@ -195,7 +195,7 @@ func (self *OvsDriver) ovsdbTransact(ops []libovsdb.Operation) error {
 // **************** OVS driver API ********************
 func (self *OvsDriver) CreateBridge(bridgeName string) error {
 	namedUuidStr := "dummy"
-	protocols := []string{"OpenFlow10", "OpenFlow11", "OpenFlow12", "OpenFlow13"}
+	protocols := []string{"OpenFlow10", "OpenFlow11", "OpenFlow12", "OpenFlow13", "OpenFlow15"}
 
 	// If the bridge already exists, just return
 	// FIXME: should we delete the old bridge and create new one?

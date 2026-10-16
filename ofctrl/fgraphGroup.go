@@ -1,7 +1,7 @@
 package ofctrl
 
 import (
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -17,9 +17,9 @@ func (self *Group) Type() string {
 	return "group"
 }
 
-func (self *Group) GetFlowInstr() openflow13.Instruction {
-	groupInstr := openflow13.NewInstrApplyActions()
-	groupAct := openflow13.NewActionGroup(self.GroupID)
+func (self *Group) GetFlowInstr() openflow.Instruction {
+	groupInstr := openflow.NewInstrApplyActions()
+	groupAct := openflow.NewActionGroup(self.GroupID)
 	groupInstr.AddAction(groupAct, false)
 
 	return groupInstr
@@ -35,9 +35,9 @@ func newGroup(groupID uint32, groupType uint8, ofSwitch *OFSwitch) *Group {
 }
 
 func DeleteGroup(ofSwitch *OFSwitch, groupID uint32) error {
-	groupMod := openflow13.NewGroupMod()
+	groupMod := openflow.NewGroupMod()
 	groupMod.GroupId = groupID
-	groupMod.Command = openflow13.OFPGC_DELETE
+	groupMod.Command = openflow.OFPGC_DELETE
 
 	if err := ofSwitch.Send(groupMod); err != nil {
 		return err
@@ -50,9 +50,9 @@ func DeleteGroup(ofSwitch *OFSwitch, groupID uint32) error {
 
 func (self *Group) Delete() {
 	if self.isInstalled {
-		groupMod := openflow13.NewGroupMod()
+		groupMod := openflow.NewGroupMod()
 		groupMod.GroupId = self.GroupID
-		groupMod.Command = openflow13.OFPGC_DELETE
+		groupMod.Command = openflow.OFPGC_DELETE
 		_ = self.Switch.Send(groupMod)
 		// Mark it as unInstalled
 		self.isInstalled = false
@@ -63,12 +63,12 @@ func (self *Group) Delete() {
 }
 
 func (self *Group) Install() error {
-	groupMod := openflow13.NewGroupMod()
+	groupMod := openflow.NewGroupMod()
 	groupMod.GroupId = self.GroupID
 
 	// Change the OP to modify if it was already installed
 	if self.isInstalled {
-		groupMod.Command = openflow13.OFPGC_MODIFY
+		groupMod.Command = openflow.OFPGC_MODIFY
 	}
 
 	// OF type for flood list
@@ -143,9 +143,13 @@ func (self *Bucket) AddAction(act Action) {
 	}
 }
 
-func (self *Bucket) toOfBucket() (*openflow13.Bucket, error) {
-	ofBkt := openflow13.NewBucket()
-	ofBkt.Weight = self.weight
+func (self *Bucket) toOfBucket() (*openflow.Bucket, error) {
+	ofBkt := openflow.NewBucket(0)
+	// In OpenFlow 1.5 the bucket weight is carried as a bucket property
+	// (ofp_group_bucket_prop_weight) instead of an inline field.
+	if self.weight != 0 {
+		ofBkt.AddProperty(openflow.NewGroupBucketPropWeight(self.weight))
+	}
 	for i := range self.bucketActions {
 		act, err := self.bucketActions[i].ToOfAction()
 		if err != nil {

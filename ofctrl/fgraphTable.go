@@ -19,7 +19,7 @@ package ofctrl
 
 import (
 	"fmt"
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 
 	"github.com/contiv/ofnet/ofctrl/dperror"
 	log "github.com/sirupsen/logrus"
@@ -37,8 +37,8 @@ func (self *Table) Type() string {
 }
 
 // instruction set for table element
-func (self *Table) GetFlowInstr() openflow13.Instruction {
-	return openflow13.NewInstrGotoTable(self.TableId)
+func (self *Table) GetFlowInstr() openflow.Instruction {
+	return openflow.NewInstrGotoTable(self.TableId)
 }
 
 // FIXME: global unique flow cookie

@@ -25,7 +25,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/dperror"
@@ -84,21 +84,21 @@ type FlowMatch struct {
 	IdleTimeout uint16
 	HardTimeout uint16
 
-	CtStates    *openflow13.CTStates
+	CtStates    *openflow.CTStates
 	CTLabel     *[16]byte
 	CTLabelMask *[16]byte
 	PktMark     uint32 // NXM_NX_PKT_MARK field, in linux kernel, from skb_mark
 	PktMarkMask *uint32
 	Regs        []*NXRegister // NXM_NX_REGX[]
 
-	RawMatchField []*openflow13.MatchField
+	RawMatchField []*openflow.MatchField
 }
 
 // NXM_NX_REGX (X in 0~15) register match field
 type NXRegister struct {
-	RegID int                 // register id
-	Data  uint32              // register data
-	Range *openflow13.NXRange // register range selection mask
+	RegID int               // register id
+	Data  uint32            // register data
+	Range *openflow.NXRange // register range selection mask
 }
 
 func (f *Flow) SendToController(controllerAction *NXController) error {
@@ -143,7 +143,7 @@ func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName,
 	return nil
 }
 
-func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow13.NXRange) error {
+func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow.NXRange) error {
 	loadAct, err := NewNXLoadAction(fieldName, data, dataRange)
 	if err != nil {
 		return err
@@ -162,7 +162,7 @@ func (f *Flow) LoadField(fieldName string, data uint64, dataRange *openflow13.NX
 	return nil
 }
 
-func (f *Flow) AppendedLoadField(fieldName string, data uint64, dataRange *openflow13.NXRange) error {
+func (f *Flow) AppendedLoadField(fieldName string, data uint64, dataRange *openflow.NXRange) error {
 	loadAct, err := NewAppendedNXLoadAction(fieldName, data, dataRange)
 	if err != nil {
 		return err
@@ -246,14 +246,14 @@ func (self *Flow) Type() string {
 }
 
 // instruction set for flow element
-func (self *Flow) GetFlowInstr() openflow13.Instruction {
+func (self *Flow) GetFlowInstr() openflow.Instruction {
 	log.Fatalf("Unexpected call to get flow's instruction set")
 	return nil
 }
 
-func AddPortMask(field *openflow13.MatchField, portMask uint16) {
+func AddPortMask(field *openflow.MatchField, portMask uint16) {
 	if portMask != 0xffff && portMask != 0x0000 {
-		mask := new(openflow13.PortField)
+		mask := new(openflow.PortField)
 		b := make([]byte, 16)
 		binary.BigEndian.PutUint16(b, portMask)
 		err := mask.UnmarshalBinary(b)
@@ -267,9 +267,9 @@ func AddPortMask(field *openflow13.MatchField, portMask uint16) {
 	}
 }
 
-func AddArpTpaMask(field *openflow13.MatchField, arpTpaMask *net.IP) {
+func AddArpTpaMask(field *openflow.MatchField, arpTpaMask *net.IP) {
 	if arpTpaMask != nil {
-		mask := new(openflow13.ArpXPaField)
+		mask := new(openflow.ArpXPaField)
 		mask.ArpPa = *arpTpaMask
 
 		field.Mask = mask
@@ -278,9 +278,9 @@ func AddArpTpaMask(field *openflow13.MatchField, arpTpaMask *net.IP) {
 	}
 }
 
-func AddArpSpaMask(field *openflow13.MatchField, arpSpaMask *net.IP) {
+func AddArpSpaMask(field *openflow.MatchField, arpSpaMask *net.IP) {
 	if arpSpaMask != nil {
-		mask := new(openflow13.ArpXPaField)
+		mask := new(openflow.ArpXPaField)
 		mask.ArpPa = *arpSpaMask
 
 		field.Mask = mask
@@ -289,23 +289,23 @@ func AddArpSpaMask(field *openflow13.MatchField, arpSpaMask *net.IP) {
 	}
 }
 
-// Translate our match fields into openflow 1.3 match fields
-func (self *Flow) xlateMatch() openflow13.Match {
-	ofMatch := openflow13.NewMatch()
+// Translate our match fields into openflow 1.5 match fields
+func (self *Flow) xlateMatch() openflow.Match {
+	ofMatch := openflow.NewMatch()
 
 	// Handle input poty
 	if self.Match.InputPort != 0 {
-		inportField := openflow13.NewInPortField(self.Match.InputPort)
+		inportField := openflow.NewInPortField(self.Match.InputPort)
 		ofMatch.AddField(*inportField)
 	}
 
 	// Handle mac DA field
 	if self.Match.MacDa != nil {
 		if self.Match.MacDaMask != nil {
-			macDaField := openflow13.NewEthDstField(*self.Match.MacDa, self.Match.MacDaMask)
+			macDaField := openflow.NewEthDstField(*self.Match.MacDa, self.Match.MacDaMask)
 			ofMatch.AddField(*macDaField)
 		} else {
-			macDaField := openflow13.NewEthDstField(*self.Match.MacDa, nil)
+			macDaField := openflow.NewEthDstField(*self.Match.MacDa, nil)
 			ofMatch.AddField(*macDaField)
 		}
 	}
@@ -313,41 +313,41 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	// Handle MacSa field
 	if self.Match.MacSa != nil {
 		if self.Match.MacSaMask != nil {
-			macSaField := openflow13.NewEthSrcField(*self.Match.MacSa, self.Match.MacSaMask)
+			macSaField := openflow.NewEthSrcField(*self.Match.MacSa, self.Match.MacSaMask)
 			ofMatch.AddField(*macSaField)
 		} else {
-			macSaField := openflow13.NewEthSrcField(*self.Match.MacSa, nil)
+			macSaField := openflow.NewEthSrcField(*self.Match.MacSa, nil)
 			ofMatch.AddField(*macSaField)
 		}
 	}
 
 	// Handle ethertype
 	if self.Match.Ethertype != 0 {
-		etypeField := openflow13.NewEthTypeField(self.Match.Ethertype)
+		etypeField := openflow.NewEthTypeField(self.Match.Ethertype)
 		ofMatch.AddField(*etypeField)
 	}
 
 	// Handle Vlan id
 	if self.Match.VlanId != nil {
-		vlanIdField := openflow13.NewVlanIdField(*self.Match.VlanId, self.Match.VlanIdMask)
+		vlanIdField := openflow.NewVlanIdField(*self.Match.VlanId, self.Match.VlanIdMask)
 		ofMatch.AddField(*vlanIdField)
 	}
 
 	// Handle ARP Oper type
 	if self.Match.ArpOper != 0 {
-		arpOperField := openflow13.NewArpOperField(self.Match.ArpOper)
+		arpOperField := openflow.NewArpOperField(self.Match.ArpOper)
 		ofMatch.AddField(*arpOperField)
 	}
 
 	// Handle ARP tpa
 	if self.Match.ArpTpa != nil {
-		arpTpaField := openflow13.NewArpTpaField(*self.Match.ArpTpa)
+		arpTpaField := openflow.NewArpTpaField(*self.Match.ArpTpa)
 		AddArpTpaMask(arpTpaField, self.Match.ArpTpaMask)
 		ofMatch.AddField(*arpTpaField)
 	}
 
 	if self.Match.ArpSpa != nil {
-		arpSpaField := openflow13.NewArpSpaField(*self.Match.ArpSpa)
+		arpSpaField := openflow.NewArpSpaField(*self.Match.ArpSpa)
 		AddArpSpaMask(arpSpaField, self.Match.ArpSpaMask)
 		ofMatch.AddField(*arpSpaField)
 	}
@@ -355,10 +355,10 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	// Handle IP Dst
 	if self.Match.IpDa != nil {
 		if self.Match.IpDaMask != nil {
-			ipDaField := openflow13.NewIpv4DstField(*self.Match.IpDa, self.Match.IpDaMask)
+			ipDaField := openflow.NewIpv4DstField(*self.Match.IpDa, self.Match.IpDaMask)
 			ofMatch.AddField(*ipDaField)
 		} else {
-			ipDaField := openflow13.NewIpv4DstField(*self.Match.IpDa, nil)
+			ipDaField := openflow.NewIpv4DstField(*self.Match.IpDa, nil)
 			ofMatch.AddField(*ipDaField)
 		}
 	}
@@ -366,10 +366,10 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	// Handle IP Src
 	if self.Match.IpSa != nil {
 		if self.Match.IpSaMask != nil {
-			ipSaField := openflow13.NewIpv4SrcField(*self.Match.IpSa, self.Match.IpSaMask)
+			ipSaField := openflow.NewIpv4SrcField(*self.Match.IpSa, self.Match.IpSaMask)
 			ofMatch.AddField(*ipSaField)
 		} else {
-			ipSaField := openflow13.NewIpv4SrcField(*self.Match.IpSa, nil)
+			ipSaField := openflow.NewIpv4SrcField(*self.Match.IpSa, nil)
 			ofMatch.AddField(*ipSaField)
 		}
 	}
@@ -377,115 +377,115 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	// Handle IPv6 Dst
 	if self.Match.Ipv6Da != nil {
 		if self.Match.Ipv6DaMask != nil {
-			ipv6DaField := openflow13.NewIpv6DstField(*self.Match.Ipv6Da, self.Match.Ipv6DaMask)
+			ipv6DaField := openflow.NewIpv6DstField(*self.Match.Ipv6Da, self.Match.Ipv6DaMask)
 			ofMatch.AddField(*ipv6DaField)
 		} else {
-			ipv6DaField := openflow13.NewIpv6DstField(*self.Match.Ipv6Da, nil)
+			ipv6DaField := openflow.NewIpv6DstField(*self.Match.Ipv6Da, nil)
 			ofMatch.AddField(*ipv6DaField)
 		}
 	}
 
 	if self.Match.Ipv6Flabel != nil {
-		ipv6FlabelField := openflow13.NewIPV6FlowLabelField(*self.Match.Ipv6Flabel, self.Match.Ipv6FlabelMask)
+		ipv6FlabelField := openflow.NewIpv6FLabelField(*self.Match.Ipv6Flabel, self.Match.Ipv6FlabelMask)
 		ofMatch.AddField(*ipv6FlabelField)
 	}
 
 	// Handle IPv6 Src
 	if self.Match.Ipv6Sa != nil {
 		if self.Match.Ipv6SaMask != nil {
-			ipv6SaField := openflow13.NewIpv6SrcField(*self.Match.Ipv6Sa, self.Match.Ipv6SaMask)
+			ipv6SaField := openflow.NewIpv6SrcField(*self.Match.Ipv6Sa, self.Match.Ipv6SaMask)
 			ofMatch.AddField(*ipv6SaField)
 		} else {
-			ipv6SaField := openflow13.NewIpv6SrcField(*self.Match.Ipv6Sa, nil)
+			ipv6SaField := openflow.NewIpv6SrcField(*self.Match.Ipv6Sa, nil)
 			ofMatch.AddField(*ipv6SaField)
 		}
 	}
 
 	// Handle IP protocol
 	if self.Match.IpProto != 0 {
-		protoField := openflow13.NewIpProtoField(self.Match.IpProto)
+		protoField := openflow.NewIpProtoField(self.Match.IpProto)
 		ofMatch.AddField(*protoField)
 	}
 
 	// Handle IP dscp
 	if self.Match.IpDscp != 0 {
-		dscpField := openflow13.NewIpDscpField(self.Match.IpDscp)
+		dscpField := openflow.NewIpDscpField(self.Match.IpDscp, nil)
 		ofMatch.AddField(*dscpField)
 	}
 
 	// icmp code and type
 	if self.Match.IcmpCode != nil {
-		icmpCodeField := openflow13.NewIcmpCodeField(*self.Match.IcmpCode)
+		icmpCodeField := openflow.NewIcmpCodeField(*self.Match.IcmpCode)
 		ofMatch.AddField(*icmpCodeField)
 	}
 	if self.Match.IcmpType != nil {
-		icmpTypeField := openflow13.NewIcmpTypeField(*self.Match.IcmpType)
+		icmpTypeField := openflow.NewIcmpTypeField(*self.Match.IcmpType)
 		ofMatch.AddField(*icmpTypeField)
 	}
 
 	// Handle port numbers
 	if self.Match.IpProto == IP_PROTO_TCP && self.Match.TcpSrcPort != 0 {
-		portField := openflow13.NewTcpSrcField(self.Match.TcpSrcPort)
+		portField := openflow.NewTcpSrcField(self.Match.TcpSrcPort)
 		AddPortMask(portField, self.Match.TcpSrcPortMask)
 		ofMatch.AddField(*portField)
 	}
 	if self.Match.IpProto == IP_PROTO_TCP && self.Match.TcpDstPort != 0 {
-		portField := openflow13.NewTcpDstField(self.Match.TcpDstPort)
+		portField := openflow.NewTcpDstField(self.Match.TcpDstPort)
 		AddPortMask(portField, self.Match.TcpDstPortMask)
 		ofMatch.AddField(*portField)
 	}
 	if self.Match.IpProto == IP_PROTO_UDP && self.Match.UdpSrcPort != 0 {
-		portField := openflow13.NewUdpSrcField(self.Match.UdpSrcPort)
+		portField := openflow.NewUdpSrcField(self.Match.UdpSrcPort)
 		AddPortMask(portField, self.Match.UdpSrcPortMask)
 		ofMatch.AddField(*portField)
 	}
 	if self.Match.IpProto == IP_PROTO_UDP && self.Match.UdpDstPort != 0 {
-		portField := openflow13.NewUdpDstField(self.Match.UdpDstPort)
+		portField := openflow.NewUdpDstField(self.Match.UdpDstPort)
 		AddPortMask(portField, self.Match.UdpDstPortMask)
 		ofMatch.AddField(*portField)
 	}
 
 	// Handle tcp flags
 	if self.Match.IpProto == IP_PROTO_TCP && self.Match.TcpFlags != nil {
-		tcpFlagField := openflow13.NewTcpFlagsField(*self.Match.TcpFlags, self.Match.TcpFlagsMask)
+		tcpFlagField := openflow.NewTcpFlagsField(*self.Match.TcpFlags, self.Match.TcpFlagsMask)
 		ofMatch.AddField(*tcpFlagField)
 	}
 
 	// Handle metadata
 	if self.Match.Metadata != nil {
 		if self.Match.MetadataMask != nil {
-			metadataField := openflow13.NewMetadataField(*self.Match.Metadata, self.Match.MetadataMask)
+			metadataField := openflow.NewMetadataField(*self.Match.Metadata, self.Match.MetadataMask)
 			ofMatch.AddField(*metadataField)
 		} else {
-			metadataField := openflow13.NewMetadataField(*self.Match.Metadata, nil)
+			metadataField := openflow.NewMetadataField(*self.Match.Metadata, nil)
 			ofMatch.AddField(*metadataField)
 		}
 	}
 
 	// Handle Vxlan tunnel id
 	if self.Match.TunnelId != 0 {
-		tunnelIdField := openflow13.NewTunnelIdField(self.Match.TunnelId)
+		tunnelIdField := openflow.NewTunnelIdField(self.Match.TunnelId)
 		ofMatch.AddField(*tunnelIdField)
 	}
 
 	if self.Match.CtStates != nil {
-		ctStateField := openflow13.NewCTStateMatchField(self.Match.CtStates)
+		ctStateField := openflow.NewCTStateMatchField(self.Match.CtStates)
 		ofMatch.AddField(*ctStateField)
 	}
 
 	if self.Match.CTLabel != nil {
-		ctLabelField := openflow13.NewCTLabelMatchField(*self.Match.CTLabel, self.Match.CTLabelMask)
+		ctLabelField := openflow.NewCTLabelMatchField(*self.Match.CTLabel, self.Match.CTLabelMask)
 		ofMatch.AddField(*ctLabelField)
 	}
 
 	// pkt_mark match
 	if self.Match.PktMark != 0 {
-		pktMarkField, _ := openflow13.FindFieldHeaderByName("NXM_NX_PKT_MARK", self.Match.PktMarkMask != nil)
-		pktMarkField.Value = &openflow13.Uint32Message{
+		pktMarkField, _ := openflow.FindFieldHeaderByName("NXM_NX_PKT_MARK", self.Match.PktMarkMask != nil)
+		pktMarkField.Value = &openflow.Uint32Message{
 			Data: self.Match.PktMark,
 		}
 		if self.Match.PktMarkMask != nil {
-			pktMarkField.Mask = &openflow13.Uint32Message{
+			pktMarkField.Mask = &openflow.Uint32Message{
 				Data: *self.Match.PktMarkMask,
 			}
 		}
@@ -494,7 +494,7 @@ func (self *Flow) xlateMatch() openflow13.Match {
 
 	if self.Match.Regs != nil {
 		for _, reg := range self.Match.Regs {
-			registerField := openflow13.NewRegMatchField(reg.RegID, reg.Data, reg.Range)
+			registerField := openflow.NewRegMatchField(reg.RegID, reg.Data, reg.Range)
 			ofMatch.AddField(*registerField)
 		}
 	}
@@ -506,31 +506,31 @@ func (self *Flow) xlateMatch() openflow13.Match {
 	}
 
 	if self.Match.Icmp6Code != nil {
-		icmp6CodeField, _ := openflow13.FindFieldHeaderByName("NXM_NX_ICMPV6_CODE", false)
-		icmp6CodeField.Value = &openflow13.IcmpCodeField{Code: *self.Match.Icmp6Code}
+		icmp6CodeField, _ := openflow.FindFieldHeaderByName("NXM_NX_ICMPV6_CODE", false)
+		icmp6CodeField.Value = &openflow.IcmpCodeField{Code: *self.Match.Icmp6Code}
 		ofMatch.AddField(*icmp6CodeField)
 	}
 	if self.Match.Icmp6Type != nil {
-		icmp6TypeField, _ := openflow13.FindFieldHeaderByName("NXM_NX_ICMPV6_Type", false)
-		icmp6TypeField.Value = &openflow13.IcmpTypeField{Type: *self.Match.Icmp6Type}
+		icmp6TypeField, _ := openflow.FindFieldHeaderByName("NXM_NX_ICMPV6_Type", false)
+		icmp6TypeField.Value = &openflow.IcmpTypeField{Type: *self.Match.Icmp6Type}
 		ofMatch.AddField(*icmp6TypeField)
 	}
 	if self.Match.NdTarget != nil {
-		ndTargetField, _ := openflow13.FindFieldHeaderByName("NXM_NX_ND_TARGET", self.Match.NdTargetMask != nil)
-		ndTargetField.Value = &openflow13.Ipv6DstField{Ipv6Dst: *self.Match.NdTarget}
+		ndTargetField, _ := openflow.FindFieldHeaderByName("NXM_NX_ND_TARGET", self.Match.NdTargetMask != nil)
+		ndTargetField.Value = &openflow.Ipv6DstField{Ipv6Dst: *self.Match.NdTarget}
 		if self.Match.NdTargetMask != nil {
-			ndTargetField.Mask = &openflow13.Ipv6DstField{Ipv6Dst: *self.Match.NdTargetMask}
+			ndTargetField.Mask = &openflow.Ipv6DstField{Ipv6Dst: *self.Match.NdTargetMask}
 		}
 		ofMatch.AddField(*ndTargetField)
 	}
 	if self.Match.NdSll != nil {
-		ndSllField, _ := openflow13.FindFieldHeaderByName("NXM_NX_ND_SLL", false)
-		ndSllField.Value = &openflow13.EthSrcField{EthSrc: *self.Match.NdSll}
+		ndSllField, _ := openflow.FindFieldHeaderByName("NXM_NX_ND_SLL", false)
+		ndSllField.Value = &openflow.EthSrcField{EthSrc: *self.Match.NdSll}
 		ofMatch.AddField(*ndSllField)
 	}
 	if self.Match.NdTll != nil {
-		ndTllField, _ := openflow13.FindFieldHeaderByName("NXM_NX_ND_SLL", false)
-		ndTllField.Value = &openflow13.EthDstField{EthDst: *self.Match.NdTll}
+		ndTllField, _ := openflow.FindFieldHeaderByName("NXM_NX_ND_SLL", false)
+		ndTllField.Value = &openflow.EthDstField{EthDst: *self.Match.NdTll}
 		ofMatch.AddField(*ndTllField)
 	}
 
@@ -538,17 +538,17 @@ func (self *Flow) xlateMatch() openflow13.Match {
 }
 
 // Install all flow actions
-func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
-	instr openflow13.Instruction) error {
-	var actInstr openflow13.Instruction
+func (self *Flow) installFlowActions(flowMod *openflow.FlowMod,
+	instr openflow.Instruction) error {
+	var actInstr openflow.Instruction
 	var addActn bool = false
 
 	// Create a apply_action instruction to be used if its not already created
 	switch instr.(type) {
-	case *openflow13.InstrActions:
+	case *openflow.InstrActions:
 		actInstr = instr
 	default:
-		actInstr = openflow13.NewInstrApplyActions()
+		actInstr = openflow.NewInstrApplyActions()
 	}
 
 	// Loop thru all actions
@@ -573,7 +573,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 		case ActTypeMetatdata:
 			act := flowAction.(*SetMetadata)
 			// Set Metadata instruction
-			metadataInstr := openflow13.NewInstrWriteMetadata(act.metadata, act.metadataMask)
+			metadataInstr := openflow.NewInstrWriteMetadata(act.metadata, act.metadataMask)
 
 			// Add the instruction to flowmod
 			flowMod.AddInstruction(metadataInstr)
@@ -624,7 +624,7 @@ func (self *Flow) installFlowActions(flowMod *openflow13.FlowMod,
 // Install a flow entry
 func (self *Flow) install() error {
 	// Create a flowmode entry
-	flowMod := openflow13.NewFlowMod()
+	flowMod := openflow.NewFlowMod()
 	flowMod.TableId = self.Table.TableId
 	flowMod.Priority = self.Match.Priority
 	flowMod.IdleTimeout = self.Match.IdleTimeout
@@ -634,12 +634,12 @@ func (self *Flow) install() error {
 
 	// Add or modify
 	if !self.isInstalled {
-		flowMod.Command = openflow13.FC_ADD
+		flowMod.Command = openflow.FC_ADD
 	} else {
-		flowMod.Command = openflow13.FC_MODIFY
+		flowMod.Command = openflow.FC_MODIFY
 	}
 
-	// convert match fields to openflow 1.3 format
+	// convert match fields to openflow 1.5 format
 	flowMod.Match = self.xlateMatch()
 	log.Debugf("flow install: Match: %+v", flowMod.Match)
 
@@ -683,7 +683,7 @@ func (self *Flow) install() error {
 			if err != nil {
 				return err
 			}
-			if len(instr.(*openflow13.InstrActions).Actions) > 0 {
+			if len(instr.(*openflow.InstrActions).Actions) > 0 {
 				flowMod.AddInstruction(instr)
 			}
 		}
@@ -1003,14 +1003,14 @@ func (self *Flow) Delete() error {
 	// Delete from ofswitch
 	if self.isInstalled {
 		// Create a flowmode entry
-		flowMod := openflow13.NewFlowMod()
-		flowMod.Command = openflow13.FC_DELETE
+		flowMod := openflow.NewFlowMod()
+		flowMod.Command = openflow.FC_DELETE
 		flowMod.TableId = self.Table.TableId
 		flowMod.Priority = self.Match.Priority
 		flowMod.Cookie = self.FlowID
 		flowMod.CookieMask = uint64(0xffffffffffffffff)
-		flowMod.OutPort = openflow13.P_ANY
-		flowMod.OutGroup = openflow13.OFPG_ANY
+		flowMod.OutPort = openflow.P_ANY
+		flowMod.OutGroup = openflow.OFPG_ANY
 
 		log.Debugf("Sending DELETE flowmod: %+v", flowMod)
 
@@ -1029,14 +1029,14 @@ func (self *Flow) Delete() error {
 
 func DeleteFlow(table *Table, priority uint16, flowID uint64) error {
 	// Create a flow mode entry
-	flowMod := openflow13.NewFlowMod()
-	flowMod.Command = openflow13.FC_DELETE
+	flowMod := openflow.NewFlowMod()
+	flowMod.Command = openflow.FC_DELETE
 	flowMod.TableId = table.TableId
 	flowMod.Priority = priority
 	flowMod.Cookie = flowID
 	flowMod.CookieMask = uint64(0xffffffffffffffff)
-	flowMod.OutPort = openflow13.P_ANY
-	flowMod.OutGroup = openflow13.OFPG_ANY
+	flowMod.OutPort = openflow.P_ANY
+	flowMod.OutGroup = openflow.OFPG_ANY
 
 	log.Debugf("Sending DELETE flow mod: %+v", flowMod)
 

@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	log "github.com/sirupsen/logrus"
 
@@ -45,19 +45,19 @@ func (self *OFSwitch) initFgraph() {
 	// Create drop action
 	dropAction := new(Output)
 	dropAction.outputType = "drop"
-	dropAction.portNo = openflow13.P_ANY
+	dropAction.portNo = openflow.P_ANY
 	self.dropAction = dropAction
 
 	// create send to controller action
 	sendToCtrler := new(Output)
 	sendToCtrler.outputType = "toController"
-	sendToCtrler.portNo = openflow13.P_CONTROLLER
+	sendToCtrler.portNo = openflow.P_CONTROLLER
 	self.sendToCtrler = sendToCtrler
 
 	// Create normal lookup action.
 	normalLookup := new(Output)
 	normalLookup.outputType = "normal"
-	normalLookup.portNo = openflow13.P_NORMAL
+	normalLookup.portNo = openflow.P_NORMAL
 	self.normalLookup = normalLookup
 }
 
@@ -85,21 +85,21 @@ func (self *OFSwitch) NewTable(tableId uint8) (*Table, error) {
 
 // Delete a table or specific flows.
 // Return an error if there are fgraph nodes pointing at it
-func (self *OFSwitch) DeleteSpecTableFlows(tableId uint8, priority *uint16, ofMatch []*openflow13.MatchField) error {
+func (self *OFSwitch) DeleteSpecTableFlows(tableId uint8, priority *uint16, ofMatch []*openflow.MatchField) error {
 	// FIXME: to be implemented
-	flowMod := openflow13.NewFlowMod()
+	flowMod := openflow.NewFlowMod()
 	flowMod.TableId = tableId
 	for _, field := range ofMatch {
 		flowMod.Match.AddField(*field)
 	}
 	if priority == nil {
 		self.tableDb.Remove(tableId)
-		flowMod.Command = openflow13.FC_DELETE
-		flowMod.OutPort = openflow13.P_ANY
-		flowMod.OutGroup = openflow13.OFPG_ANY
+		flowMod.Command = openflow.FC_DELETE
+		flowMod.OutPort = openflow.P_ANY
+		flowMod.OutGroup = openflow.OFPG_ANY
 	} else {
 		flowMod.Priority = *priority
-		flowMod.Command = openflow13.FC_DELETE_STRICT
+		flowMod.Command = openflow.FC_DELETE_STRICT
 	}
 
 	log.Debugf("Sending DELETE table flowmod: %+v", flowMod)
@@ -147,7 +147,7 @@ func (self *OFSwitch) OutputPortReg(regName string, offset uint16) (_ *Output, e
 	output := new(Output)
 	output.outputType = "reg"
 	output.offset = offset<<6 + 15
-	output.regField, err = openflow13.FindFieldHeaderByName(regName, true)
+	output.regField, err = openflow.FindFieldHeaderByName(regName, true)
 	if err != nil {
 		return nil, err
 	}
@@ -193,13 +193,13 @@ func (self *OFSwitch) DeleteFlowByRoundInfo(roundNum uint64) {
 }
 
 func (self *OFSwitch) DeleteFlowByCookie(cookieId, cookieMask uint64) {
-	flowMod := openflow13.NewFlowMod()
-	flowMod.Command = openflow13.FC_DELETE
+	flowMod := openflow.NewFlowMod()
+	flowMod.Command = openflow.FC_DELETE
 	flowMod.Cookie = cookieId
 	flowMod.CookieMask = cookieMask
-	flowMod.OutPort = openflow13.P_ANY
-	flowMod.OutGroup = openflow13.OFPG_ANY
-	flowMod.TableId = openflow13.OFPTT_ALL
+	flowMod.OutPort = openflow.P_ANY
+	flowMod.OutGroup = openflow.OFPG_ANY
+	flowMod.TableId = openflow.OFPTT_ALL
 
 	_ = self.Send(flowMod)
 }
@@ -234,9 +234,9 @@ func (self *OFSwitch) clearGroups() error {
 		return nil
 	}
 	// Clear all existing flood lists
-	groupMod := openflow13.NewGroupMod()
-	groupMod.GroupId = openflow13.OFPG_ALL
-	groupMod.Command = openflow13.OFPGC_DELETE
-	groupMod.Type = openflow13.OFPGT_ALL
+	groupMod := openflow.NewGroupMod()
+	groupMod.GroupId = openflow.OFPG_ALL
+	groupMod.Command = openflow.OFPGC_DELETE
+	groupMod.Type = openflow.OFPGT_ALL
 	return self.Send(groupMod)
 }
