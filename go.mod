@@ -1,6 +1,6 @@
 module github.com/contiv/ofnet
 
-go 1.19
+go 1.26
 
 require (
 	github.com/contiv/libOpenflow v0.0.0-20200107061746-e3817550c83b
