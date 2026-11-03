@@ -17,8 +17,10 @@ package ofctrl
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
@@ -54,6 +56,10 @@ type OFSwitch struct {
 	tlvMgr *tlvMapMgr
 
 	disableCleanGroup bool
+
+	txLock       sync.Mutex
+	txChans      map[uint32]messageSubscription
+	barrierChans map[uint32]messageSubscription
 }
 
 var switchDb cmap.ConcurrentMap[string, *OFSwitch]
@@ -222,11 +228,17 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 		case openflow.Type_BarrierRequest:
 
 		case openflow.Type_BarrierReply:
+			self.publishBarrier(t.Xid, MessageResult{
+				succeed: true,
+				xID:     t.Xid,
+				msgType: BarrierReply,
+			})
 
 		}
 	case *openflow.ErrorMsg:
 		log.Errorf("Received OpenFlow1.5 error: %s on msg %s, origin data: %s",
 			GetErrorMessage(t.Type, t.Code, 0), GetErrorMessageType(t.Data), t.Data.String())
+		self.handleBundleError(t)
 	case *openflow.VendorHeader:
 		switch t.ExperimenterType {
 		case openflow.Type_TlvTableReply:
@@ -234,6 +246,12 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 			status := TLVTableStatus(*reply)
 			self.tlvMgr.TLVMapReplyRcvd(self, &status)
 		}
+	case *openflow.BundleCtrl:
+		self.publishMessage(t.BundleId, MessageResult{
+			succeed: true,
+			xID:     t.Header.Xid,
+			msgType: BundleControlResult,
+		})
 
 	case *openflow.SwitchFeatures:
 		switch t.Header.Type {
@@ -274,4 +292,96 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 		self.app.MultipartReply(self, (*openflow.MultipartReply)(t))
 
 	}
+}
+
+type messageSubscription struct {
+	replyCh chan MessageResult
+	done    <-chan struct{}
+}
+
+func (self *OFSwitch) subscribeMessage(bundleID uint32, subscription messageSubscription) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	if self.txChans == nil {
+		self.txChans = make(map[uint32]messageSubscription)
+	}
+	self.txChans[bundleID] = subscription
+}
+
+func (self *OFSwitch) unsubscribeMessage(bundleID uint32) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	delete(self.txChans, bundleID)
+}
+
+func (self *OFSwitch) publishMessage(bundleID uint32, result MessageResult) {
+	self.txLock.Lock()
+	subscription, found := self.txChans[bundleID]
+	self.txLock.Unlock()
+	if !found {
+		return
+	}
+	select {
+	case <-subscription.done:
+		return
+	case subscription.replyCh <- result:
+	case <-time.After(messageTimeout):
+		log.Warnf("Bundle %d reply was dropped because the transaction did not accept it in time", bundleID)
+	}
+}
+
+func (self *OFSwitch) subscribeBarrier(xid uint32, subscription messageSubscription) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	if self.barrierChans == nil {
+		self.barrierChans = make(map[uint32]messageSubscription)
+	}
+	self.barrierChans[xid] = subscription
+}
+
+func (self *OFSwitch) unsubscribeBarrier(xid uint32) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	delete(self.barrierChans, xid)
+}
+
+func (self *OFSwitch) publishBarrier(xid uint32, result MessageResult) {
+	self.txLock.Lock()
+	subscription, found := self.barrierChans[xid]
+	self.txLock.Unlock()
+	if !found {
+		return
+	}
+	select {
+	case <-subscription.done:
+		return
+	case subscription.replyCh <- result:
+	case <-time.After(messageTimeout):
+		log.Warnf("Barrier %d reply was dropped because the transaction did not accept it in time", xid)
+	}
+}
+
+// handleBundleError routes an error reply to the bundle that owns the failed
+// request. The error data carries the offending request, whose bundle ID
+// follows the common header.
+func (self *OFSwitch) handleBundleError(msg *openflow.ErrorMsg) {
+	data := msg.Data.Bytes()
+	if len(data) < 12 {
+		return
+	}
+	result := MessageResult{
+		succeed: false,
+		errType: msg.Type,
+		errCode: msg.Code,
+		xID:     msg.Xid,
+	}
+	switch data[1] {
+	case openflow.Type_BundleControl:
+		result.msgType = BundleControlResult
+	case openflow.Type_BundleAddMessage:
+		result.msgType = BundleAddError
+	default:
+		return
+	}
+	self.publishMessage(binary.BigEndian.Uint32(data[8:12]), result)
 }
