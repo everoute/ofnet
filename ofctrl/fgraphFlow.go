@@ -621,8 +621,8 @@ func (self *Flow) installFlowActions(flowMod *openflow.FlowMod,
 	return nil
 }
 
-// Install a flow entry
-func (self *Flow) install() error {
+// Build the flow mod message that installs the flow entry
+func (self *Flow) buildFlowMod() (*openflow.FlowMod, error) {
 	// Create a flowmode entry
 	flowMod := openflow.NewFlowMod()
 	flowMod.TableId = self.Table.TableId
@@ -681,7 +681,7 @@ func (self *Flow) install() error {
 		if instr != nil {
 			err := self.installFlowActions(flowMod, instr)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if len(instr.(*openflow.InstrActions).Actions) > 0 {
 				flowMod.AddInstruction(instr)
@@ -694,6 +694,16 @@ func (self *Flow) install() error {
 	}
 
 	log.Debugf("Sending flowmod: %+v", flowMod)
+
+	return flowMod, nil
+}
+
+// Install a flow entry
+func (self *Flow) install() error {
+	flowMod, err := self.buildFlowMod()
+	if err != nil {
+		return err
+	}
 
 	// Send the message
 	if self.Table.Switch == nil {
