@@ -3,6 +3,7 @@ package ofctrl
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 
 	openflow "github.com/contiv/libOpenflow/openflow15"
@@ -618,16 +619,6 @@ func nxFieldWidth(field *openflow.MatchField) int {
 	return width
 }
 
-// nxUintMessage encodes v as a big-endian byte array of the given width.
-func nxUintMessage(v uint64, width int) *openflow.ByteArrayField {
-	buf := make([]byte, width)
-	for i := width - 1; i >= 0; i-- {
-		buf[i] = byte(v)
-		v >>= 8
-	}
-	return &openflow.ByteArrayField{Data: buf, Length: uint8(width)}
-}
-
 // nxLoadToSetField converts a Nicira "load" (reg_load/reg_load2) into an
 // OpenFlow set_field action. OpenFlow 1.4+ (including 1.5) no longer accepts the
 // Nicira reg_load extension, so - like OVS itself - ofctrl expresses a register
@@ -639,17 +630,31 @@ func nxLoadToSetField(header *openflow.MatchField, rng *openflow.NXRange, data u
 	width := nxFieldWidth(header)
 	offset := int(rng.GetOfs())
 	nbits := int(rng.GetNbits())
-	if width < 1 || width > 8 || offset < 0 || nbits < 1 || nbits > 64 || offset+nbits > width*8 {
+	if width < 1 || width > 16 || offset < 0 || nbits < 1 || nbits > 64 || offset+nbits > width*8 {
 		return nil, fmt.Errorf("invalid nx load range [%d..%d] for a %d-byte field", offset, offset+nbits-1, width)
 	}
-	mask := (uint64(1)<<uint(nbits) - 1) << uint(offset)
-	value := (data << uint(offset)) & mask
+	// NXAST_REG_LOAD rejects an immediate with nonzero bits outside the
+	// selected range. Preserve that behavior rather than silently truncating.
+	if nbits < 64 && data>>uint(nbits) != 0 {
+		return nil, fmt.Errorf("nx load value %#x does not fit into %d bits", data, nbits)
+	}
+	// The immediate value is uint64, but its destination may be a subrange of
+	// a 128-bit ct_label. Shift at the destination width, not in a uint64.
+	mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(nbits)), big.NewInt(1))
+	mask.Lsh(mask, uint(offset))
+	value := new(big.Int).Lsh(new(big.Int).SetUint64(data), uint(offset))
 
 	field := *header
 	field.HasMask = true
 	field.Length = uint8(width * 2)
-	field.Value = nxUintMessage(value, width)
-	field.Mask = nxUintMessage(mask, width)
+	field.Value = &openflow.ByteArrayField{
+		Data:   value.FillBytes(make([]byte, width)),
+		Length: uint8(width),
+	}
+	field.Mask = &openflow.ByteArrayField{
+		Data:   mask.FillBytes(make([]byte, width)),
+		Length: uint8(width),
+	}
 	return &field, nil
 }
 

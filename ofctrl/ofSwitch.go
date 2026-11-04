@@ -208,7 +208,7 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 		switch t.Header().Type {
 		case openflow.Type_Hello:
 			// Send Hello response
-			h, err := common.NewHello(openflow.VERSION)
+			h, err := openflow.NewHello()
 			if err != nil {
 				log.Errorf("Error creating hello message")
 			}

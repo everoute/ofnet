@@ -279,7 +279,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 	log.Println("New connection..")
 
 	// Send ofp 1.5 Hello by default
-	h, err := common.NewHello(openflow.VERSION)
+	h, err := openflow.NewHello()
 	if err != nil {
 		return
 	}
