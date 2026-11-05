@@ -20,7 +20,7 @@ package ofctrl
 import (
 	"errors"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -110,12 +110,12 @@ func (self *Flood) install() error {
 	groupMod.Type = openflow.OFPGT_ALL
 
 	// Loop thru all output ports and add it to group bucket
-	for _, output := range self.FloodList {
+	for idx, output := range self.FloodList {
 		// Get the output action from output entry
 		act := output.outPort.GetOutAction()
 		if act != nil {
 			// Create a new bucket for each port
-			bkt := openflow.NewBucket()
+			bkt := openflow.NewBucket(uint32(idx))
 
 			// Set tunnel Id if required
 			if output.isTunnel {

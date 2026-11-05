@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/ofnet/ovsdbDriver"
 	log "github.com/sirupsen/logrus"
 )

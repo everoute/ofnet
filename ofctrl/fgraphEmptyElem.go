@@ -1,7 +1,7 @@
 package ofctrl
 
 import (
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 )
 
 type EmptyElem struct {

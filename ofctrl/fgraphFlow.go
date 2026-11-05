@@ -25,7 +25,7 @@ import (
 	"net"
 	"sync"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/contiv/ofnet/ofctrl/dperror"
@@ -289,7 +289,7 @@ func AddArpSpaMask(field *openflow.MatchField, arpSpaMask *net.IP) {
 	}
 }
 
-// Translate our match fields into openflow 1.3 match fields
+// Translate our match fields into openflow 1.5 match fields
 func (self *Flow) xlateMatch() openflow.Match {
 	ofMatch := openflow.NewMatch()
 
@@ -386,7 +386,7 @@ func (self *Flow) xlateMatch() openflow.Match {
 	}
 
 	if self.Match.Ipv6Flabel != nil {
-		ipv6FlabelField := openflow.NewIPV6FlowLabelField(*self.Match.Ipv6Flabel, self.Match.Ipv6FlabelMask)
+		ipv6FlabelField := openflow.NewIpv6FLabelField(*self.Match.Ipv6Flabel, self.Match.Ipv6FlabelMask)
 		ofMatch.AddField(*ipv6FlabelField)
 	}
 
@@ -409,7 +409,7 @@ func (self *Flow) xlateMatch() openflow.Match {
 
 	// Handle IP dscp
 	if self.Match.IpDscp != 0 {
-		dscpField := openflow.NewIpDscpField(self.Match.IpDscp)
+		dscpField := openflow.NewIpDscpField(self.Match.IpDscp, nil)
 		ofMatch.AddField(*dscpField)
 	}
 
@@ -639,7 +639,7 @@ func (self *Flow) install() error {
 		flowMod.Command = openflow.FC_MODIFY
 	}
 
-	// convert match fields to openflow 1.3 format
+	// convert match fields to openflow 1.5 format
 	flowMod.Match = self.xlateMatch()
 	log.Debugf("flow install: Match: %+v", flowMod.Match)
 
