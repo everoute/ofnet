@@ -121,6 +121,9 @@ func (f *Flow) Output(outputAction *OutputAction) error {
 	return nil
 }
 
+// MoveField copies a field range. Moving 12 bits to VLAN_TCI at offset 0
+// automatically pushes an 802.1Q header before the copy, like SetVlan.
+// This supports single-layer VLAN only; do not also add an explicit push.
 func (f *Flow) MoveField(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dstMatchFieldName string, hasMask bool) error {
 	moveAct, err := NewNXMoveAction(bitLen, srcOffset, dstOffset, srcMatchFieldName, dstMatchFieldName, hasMask)
 	if err != nil {
@@ -557,10 +560,16 @@ func (self *Flow) installFlowActions(flowMod *openflow.FlowMod,
 		switch actType {
 		case ActTypeSetVlan:
 			// Push Vlan Tag action
-			pushVlanAction, _ := NewPushVlanAction(0x8100).ToOfAction()
+			pushVlanAction, err := NewPushVlanAction(0x8100).ToOfAction()
+			if err != nil {
+				return fmt.Errorf("convert push VLAN action: %w", err)
+			}
 
 			// Set Outer vlan tag field
-			setVlanAction, _ := flowAction.ToOfAction()
+			setVlanAction, err := flowAction.ToOfAction()
+			if err != nil {
+				return fmt.Errorf("convert %s action: %w", actType, err)
+			}
 
 			// Prepend push vlan & setvlan actions to existing instruction
 			actInstr.AddAction(setVlanAction, true)
@@ -582,24 +591,46 @@ func (self *Flow) installFlowActions(flowMod *openflow.FlowMod,
 			ActTypeSetDSCP, ActTypeSetTCPsPort, ActTypeSetTCPdPort, ActTypeSetUDPdPort, ActTypeSetUDPsPort, ActTypeNXLoad,
 			ActTypeNXMove, ActTypeNXLearn, ActTypeDecNwTtl, ActTypeSetTunnelDstIP, ActTypeCTClear:
 
-			var prepend bool = true
-			act, _ := flowAction.ToOfAction()
+			prepend := true
+			act, err := flowAction.ToOfAction()
+			if err != nil {
+				return fmt.Errorf("convert %s action: %w", actType, err)
+			}
 			if flowAction.GetActionType() == ActTypeNXLoad && flowAction.(*NXLoadAction).Appended {
 				// prepend instruction to openflow act set
 				prepend = false
 			}
 			// Add it to instruction
-			err := actInstr.AddAction(act, prepend)
+			err = actInstr.AddAction(act, prepend)
 			if err != nil {
 				return err
+			}
+			if move, ok := flowAction.(*NXMoveAction); ok && move.DstField != nil &&
+				move.DstField.Class == openflow.OXM_CLASS_NXM_0 && move.DstField.Field == openflow.NXM_OF_VLAN_TCI &&
+				move.DstOffset == 0 && move.Length == 12 {
+				// Like SetVlan, moveVID creates a single VLAN header before
+				// writing its VID. Callers must not add another push for this
+				// move. This is not an in-place VID update or QinQ operation.
+				// Move was prepended above; prepend push to execute push ->
+				// move VID without changing other actions' legacy ordering.
+				push, err := NewPushVlanAction(0x8100).ToOfAction()
+				if err != nil {
+					return fmt.Errorf("convert push VLAN action: %w", err)
+				}
+				if err := actInstr.AddAction(push, true); err != nil {
+					return err
+				}
 			}
 			addActn = true
 
 			log.Debugf("flow install. Added %s action: %+v", actType, act)
 
 		case ActTypeNXResubmit, ActTypeOutput, ActTypeController, ActTypeGroup, ActTypeCT:
-			act, _ := flowAction.ToOfAction()
-			err := actInstr.AddAction(act, false)
+			act, err := flowAction.ToOfAction()
+			if err != nil {
+				return fmt.Errorf("convert %s action: %w", actType, err)
+			}
+			err = actInstr.AddAction(act, false)
 			if err != nil {
 				return err
 			}
@@ -650,7 +681,9 @@ func (self *Flow) buildFlowMod() (*openflow.FlowMod, error) {
 		instr := self.NextElem.GetFlowInstr()
 
 		// Check if there are any flow actions to perform
-		self.installFlowActions(flowMod, instr)
+		if err := self.installFlowActions(flowMod, instr); err != nil {
+			return nil, err
+		}
 
 		// Add the instruction to flowmod
 		flowMod.AddInstruction(instr)
@@ -668,7 +701,9 @@ func (self *Flow) buildFlowMod() (*openflow.FlowMod, error) {
 		if instr != nil {
 
 			// Check if there are any flow actions to perform
-			self.installFlowActions(flowMod, instr)
+			if err := self.installFlowActions(flowMod, instr); err != nil {
+				return nil, err
+			}
 
 			flowMod.AddInstruction(instr)
 
