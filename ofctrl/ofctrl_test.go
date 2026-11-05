@@ -16,6 +16,7 @@ limitations under the License.
 package ofctrl
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -30,6 +31,330 @@ import (
 	"github.com/contiv/ofnet/ovsdbDriver"
 	log "github.com/sirupsen/logrus"
 )
+
+func TestNXLoadSetFieldWidth(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		field string
+		start int
+		end   int
+		value uint64
+		data  string
+		mask  string
+	}{
+		{
+			name:  "register subrange",
+			field: "NXM_NX_REG7",
+			start: 8,
+			end:   15,
+			value: 0xff,
+			data:  "0000ff00",
+			mask:  "0000ff00",
+		},
+		{
+			name:  "label format",
+			field: "NXM_NX_CT_LABEL",
+			start: 124,
+			end:   125,
+			value: 3,
+			data:  "30000000000000000000000000000000",
+			mask:  "30000000000000000000000000000000",
+		},
+		{
+			name:  "label highest bit",
+			field: "NXM_NX_CT_LABEL",
+			start: 127,
+			end:   127,
+			value: 1,
+			data:  "80000000000000000000000000000000",
+			mask:  "80000000000000000000000000000000",
+		},
+		{
+			name:  "label crosses uint64 boundary",
+			field: "NXM_NX_CT_LABEL",
+			start: 60,
+			end:   67,
+			value: 0xff,
+			data:  "000000000000000ff000000000000000",
+			mask:  "000000000000000ff000000000000000",
+		},
+		{
+			name:  "label upper uint64",
+			field: "NXM_NX_CT_LABEL",
+			start: 64,
+			end:   127,
+			value: 0x0123456789abcdef,
+			data:  "0123456789abcdef0000000000000000",
+			mask:  "ffffffffffffffff0000000000000000",
+		},
+		{
+			name:  "label zero clears selected bits",
+			field: "NXM_NX_CT_LABEL",
+			start: 124,
+			end:   125,
+			value: 0,
+			data:  "00000000000000000000000000000000",
+			mask:  "30000000000000000000000000000000",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			load, err := NewNXLoadAction(tt.field, tt.value, openflow.NewNXRange(tt.start, tt.end))
+			if err != nil {
+				t.Fatal(err)
+			}
+			action, err := load.ToOfAction()
+			if err != nil {
+				t.Fatal(err)
+			}
+			set, ok := action.(*openflow.ActionSetField)
+			if !ok {
+				t.Fatalf("expected OF1.5 set_field, got %T", action)
+			}
+			value, err := set.Field.Value.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			mask, err := set.Field.Mask.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fmt.Sprintf("%x", value) != tt.data || fmt.Sprintf("%x", mask) != tt.mask {
+				t.Fatalf("value=%x mask=%x, want value=%s mask=%s", value, mask, tt.data, tt.mask)
+			}
+			if !set.Field.HasMask || int(set.Field.Length) != len(value)+len(mask) {
+				t.Fatalf("incorrect masked field length: %+v", set.Field)
+			}
+			encoded, err := action.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded := &openflow.ActionSetField{}
+			if err := decoded.UnmarshalBinary(encoded); err != nil {
+				t.Fatal(err)
+			}
+			roundTrip, err := decoded.MarshalBinary()
+			if err != nil || !bytes.Equal(encoded, roundTrip) {
+				t.Fatalf("set_field wire round trip: %x, %v", roundTrip, err)
+			}
+		})
+	}
+}
+
+func TestNXLoadRejectsOversizedImmediate(t *testing.T) {
+	for _, tt := range []struct {
+		field string
+		start int
+		end   int
+		value uint64
+	}{
+		{
+			field: "NXM_NX_REG7",
+			start: 8,
+			end:   15,
+			value: 0x1ff,
+		},
+		{
+			field: "NXM_NX_CT_LABEL",
+			start: 124,
+			end:   125,
+			value: 4,
+		},
+		{
+			field: "NXM_NX_CT_LABEL",
+			start: 127,
+			end:   127,
+			value: 2,
+		},
+	} {
+		load, err := NewNXLoadAction(tt.field, tt.value, openflow.NewNXRange(tt.start, tt.end))
+		if err != nil {
+			t.Fatal(err)
+		}
+		action, err := load.ToOfAction()
+		if action != nil || err == nil || !strings.Contains(err.Error(), "does not fit into") {
+			t.Fatalf("oversized immediate %#x for %s[%d..%d] must fail, got %T, %v",
+				tt.value, tt.field, tt.start, tt.end, action, err)
+		}
+	}
+}
+
+func TestNXLoadRejectsInvalidRange(t *testing.T) {
+	for _, tt := range []struct {
+		field string
+		start int
+		end   int
+	}{
+		{
+			field: "NXM_NX_CT_LABEL",
+			start: 0,
+			end:   64,
+		},
+		{
+			field: "NXM_NX_CT_LABEL",
+			start: 127,
+			end:   128,
+		},
+		{
+			field: "NXM_NX_REG7",
+			start: 31,
+			end:   32,
+		},
+	} {
+		load, err := NewNXLoadAction(tt.field, 1, openflow.NewNXRange(tt.start, tt.end))
+		if err != nil {
+			t.Fatal(err)
+		}
+		action, err := load.ToOfAction()
+		if action != nil || err == nil || !strings.Contains(err.Error(), "invalid nx load range") {
+			t.Fatalf("expected range rejection for %s[%d..%d], got %T, %v", tt.field, tt.start, tt.end, action, err)
+		}
+	}
+}
+
+func TestMoveVIDAddsPushVlan(t *testing.T) {
+	move, err := NewNXMoveAction(12, 0, 0, "NXM_NX_REG8", "NXM_OF_VLAN_TCI", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	load, err := NewNXLoadAction("NXM_NX_REG7", 1, openflow.NewNXRange(8, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextTable := uint8(225)
+	for _, next := range []FgraphElem{NewEmptyElem(), &Output{outputType: "port", portNo: 2}} {
+		for _, explicit := range [][]Action{
+			{move, load, NewResubmitAction(nil, &nextTable)},
+		} {
+			flow := &Flow{
+				Table:    &Table{TableId: 220},
+				NextElem: next,
+			}
+			if err := flow.AddAction(explicit...); err != nil {
+				t.Fatal(err)
+			}
+			mod, err := flow.buildFlowMod()
+			if err != nil {
+				t.Fatal(err)
+			}
+			actions := mod.Instructions[0].(*openflow.InstrActions).Actions
+			// Load still prepends ahead of the pair. NextElem's output retains
+			// its legacy position before the appended resubmit. Only the
+			// push -> VID-move dependency receives special ordering.
+			want := []uint16{
+				openflow.ActionType_SetField, openflow.ActionType_PushVlan, openflow.ActionType_Copy_Field,
+			}
+			if next.Type() == "output" {
+				want = append(want, openflow.ActionType_Output)
+			}
+			want = append(want, openflow.ActionType_Experimenter)
+			if len(actions) != len(want) {
+				t.Fatalf("%s: got %d actions, want %d", next.Type(), len(actions), len(want))
+			}
+			for i, action := range actions {
+				data, err := action.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := uint16(data[0])<<8 | uint16(data[1]); got != want[i] {
+					t.Fatalf("%s action %d: got type %d, want %d", next.Type(), i, got, want[i])
+				}
+			}
+		}
+	}
+}
+
+func TestRegisterMoveDoesNotAddPushVlan(t *testing.T) {
+	move, err := NewNXMoveAction(12, 0, 0, "NXM_NX_REG8", "NXM_NX_REG7", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow := &Flow{
+		Table:       &Table{TableId: 220},
+		NextElem:    NewEmptyElem(),
+		flowActions: []Action{move},
+	}
+	mod, err := flow.buildFlowMod()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := mod.Instructions[0].(*openflow.InstrActions).Actions
+	if len(actions) != 1 {
+		t.Fatalf("ordinary move must not add a VLAN header: %v", actions)
+	}
+	if _, ok := actions[0].(*openflow.ActionCopyField); !ok {
+		t.Fatalf("expected ordinary copy_field, got %T", actions[0])
+	}
+}
+
+func TestBuildFlowModReturnsActionConversionError(t *testing.T) {
+	wantErr := errors.New("action conversion failed")
+	for _, actionType := range []string{ActTypeSetVlan, ActTypeNXLoad, ActTypeOutput, ActTypeCT} {
+		for _, next := range []FgraphElem{&Table{TableId: 2}, NewEmptyElem(), &Output{outputType: "port", portNo: 2}} {
+			flow := &Flow{
+				Table:    &Table{TableId: 1},
+				NextElem: next,
+				flowActions: []Action{&failingConversionAction{
+					actionType: actionType,
+					err:        wantErr,
+				}},
+			}
+			mod, err := flow.buildFlowMod()
+			if mod != nil || !errors.Is(err, wantErr) {
+				t.Fatalf("%s -> %s: expected conversion error, got %+v, %v", actionType, next.Type(), mod, err)
+			}
+		}
+	}
+	// Exercise the actual NXLoad error path too, rather than only a fake.
+	load, err := NewNXLoadAction("NXM_NX_REG7", 1, openflow.NewNXRange(31, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow := &Flow{
+		Table:       &Table{TableId: 1},
+		NextElem:    NewEmptyElem(),
+		flowActions: []Action{load},
+	}
+	mod, err := flow.buildFlowMod()
+	if mod != nil || err == nil || !strings.Contains(err.Error(), "invalid nx load range") {
+		t.Fatalf("invalid load must fail before sending: %+v, %v", mod, err)
+	}
+}
+
+func TestSetVlanKeepsLegacyActionOrder(t *testing.T) {
+	flow := &Flow{
+		Table:    &Table{TableId: 1},
+		NextElem: NewEmptyElem(),
+	}
+	if err := flow.AddAction(NewOutputAction(2), NewSetVlanAction(12)); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := flow.buildFlowMod()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := mod.Instructions[0].(*openflow.InstrActions).Actions
+	if len(actions) != 3 {
+		t.Fatalf("expected push, set VLAN, output: %v", actions)
+	}
+	if _, ok := actions[0].(*openflow.ActionPush); !ok {
+		t.Fatalf("first action must push VLAN: %T", actions[0])
+	}
+	if _, ok := actions[1].(*openflow.ActionSetField); !ok {
+		t.Fatalf("second action must set VLAN: %T", actions[1])
+	}
+	if _, ok := actions[2].(*openflow.ActionOutput); !ok {
+		t.Fatalf("legacy output must remain last: %T", actions[2])
+	}
+}
+
+type failingConversionAction struct {
+	actionType string
+	err        error
+}
+
+func (a *failingConversionAction) GetActionType() string { return a.actionType }
+
+func (a *failingConversionAction) ToOfAction() (openflow.Action, error) { return nil, a.err }
 
 type OfActor struct {
 	Switch            *OFSwitch
