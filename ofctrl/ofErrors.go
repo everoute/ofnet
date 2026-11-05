@@ -3,7 +3,7 @@ package ofctrl
 import (
 	"fmt"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/libOpenflow/util"
 )
 

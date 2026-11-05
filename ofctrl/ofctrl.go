@@ -15,7 +15,7 @@ limitations under the License.
 */
 package ofctrl
 
-// This library implements a simple openflow 1.3 controller
+// This library implements a simple openflow 1.5 controller
 
 import (
 	"context"
@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/libOpenflow/util"
 	ovsdb "github.com/contiv/libovsdb"
 
@@ -59,9 +59,9 @@ const (
 // ovs-vsctl set-controller <bridge-name> tcp:<ip-addr>:<port>
 // E.g.    sudo ovs-vsctl set-controller ovsbr0 tcp:127.0.0.1:6633
 
-// To enable openflow1.3 support in OVS:
-// ovs-vsctl set bridge <bridge-name> protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13
-// E.g. sudo ovs-vsctl set bridge ovsbr0 protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13
+// To enable openflow1.5 support in OVS:
+// ovs-vsctl set bridge <bridge-name> protocols=OpenFlow15
+// E.g. sudo ovs-vsctl set bridge ovsbr0 protocols=OpenFlow15
 
 type AppInterface interface {
 	// A Switch connected to the controller
@@ -278,8 +278,8 @@ func (c *Controller) handleConnection(conn net.Conn) {
 
 	log.Println("New connection..")
 
-	// Send ofp 1.3 Hello by default
-	h, err := common.NewHello(4)
+	// Send ofp 1.5 Hello by default
+	h, err := openflow.NewHello()
 	if err != nil {
 		return
 	}
@@ -296,7 +296,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// connection may be servered without error.
 			case *common.Hello:
 				if m.Version == openflow.VERSION {
-					log.Infoln("Received Openflow 1.3 Hello message")
+					log.Infoln("Received Openflow 1.5 Hello message")
 					// Version negotiation is
 					// considered complete. Create
 					// new Switch and notifiy listening
@@ -313,7 +313,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// have all the information we need. Create a new
 			// switch object and notify applications.
 			case *openflow.SwitchFeatures:
-				log.Printf("Received ofp1.3 Switch feature response: %+v", *m)
+				log.Printf("Received ofp1.5 Switch feature response: %+v", *m)
 
 				// Create a new switch and handover the stream
 				var reConnChan chan int = nil
@@ -337,7 +337,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// An error message may indicate a version mismatch. We
 			// disconnect if an error occurs this early.
 			case *openflow.ErrorMsg:
-				log.Warnf("Received ofp1.3 error msg: %+v", *m)
+				log.Warnf("Received ofp1.5 error msg: %+v", *m)
 				stream.Shutdown <- true
 			}
 		case err := <-stream.Error:

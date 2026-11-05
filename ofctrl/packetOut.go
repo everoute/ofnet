@@ -22,7 +22,7 @@ import (
 	"math/rand"
 	"net"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/libOpenflow/protocol"
 	log "github.com/sirupsen/logrus"
 )
@@ -143,7 +143,14 @@ func ConstructPacketOut(packet *Packet) *PacketOut {
 func SendPacket(sw *OFSwitch, packetOut *PacketOut) error {
 	// generate openflow packetOut from ofctrl packet out
 	ofPacketOut := openflow.NewPacketOut()
-	ofPacketOut.InPort = packetOut.InPort
+	// OpenFlow 1.5 removed the packet_out in_port field; the ingress port is now
+	// carried in the packet_out match. Default to the controller port when unset.
+	inPort := packetOut.InPort
+	if inPort == 0 {
+		inPort = openflow.P_CONTROLLER
+	}
+	ofPacketOut.Match = *openflow.NewMatch()
+	ofPacketOut.Match.AddField(*openflow.NewInPortField(inPort))
 
 	ofPacketOut.Data = GeneratePacketOutData(packetOut)
 	for _, action := range packetOut.Actions {
@@ -153,7 +160,7 @@ func SendPacket(sw *OFSwitch, packetOut *PacketOut) error {
 		log.Infof("send packet to port %v", *packetOut.OutPort)
 		ofPacketOut.AddAction(openflow.NewActionOutput(*packetOut.OutPort))
 	} else {
-		// default send packet to first table. openflow spec defined
+		// default send packet to first table. OpenFlow 1.5 spec defined
 		ofPacketOut.AddAction(openflow.NewActionOutput(openflow.P_TABLE))
 	}
 	for _, action := range ofPacketOut.Actions {

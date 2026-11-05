@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/libOpenflow/util"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -202,7 +202,7 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 		switch t.Header().Type {
 		case openflow.Type_Hello:
 			// Send Hello response
-			h, err := common.NewHello(4)
+			h, err := openflow.NewHello()
 			if err != nil {
 				log.Errorf("Error creating hello message")
 			}
@@ -225,7 +225,7 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 
 		}
 	case *openflow.ErrorMsg:
-		log.Errorf("Received OpenFlow1.3 error: %s on msg %s, origin data: %s",
+		log.Errorf("Received OpenFlow1.5 error: %s on msg %s, origin data: %s",
 			GetErrorMessage(t.Type, t.Code, 0), GetErrorMessageType(t.Data), t.Data.String())
 	case *openflow.VendorHeader:
 		switch t.ExperimenterType {

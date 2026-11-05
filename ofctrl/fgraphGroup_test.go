@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -155,7 +155,7 @@ func TestAddResetBuckets(t *testing.T) {
 	gp.AddBucket(bucket2)
 	gpDump, err = ofctrlGroupDump(ovsDriver.OvsBridgeName, fmt.Sprintf("%d", gpId))
 	assert.Nil(t, err)
-	bucket2Act := fmt.Sprintf("load:0xa00003b->NXM_NX_REG1[]")
+	bucket2Act := fmt.Sprintf("set_field:0xa00003b->reg1")
 	assert.True(t, matchGroupBucket(gpDump, 35, bucket2Act))
 
 	// test reset buckets

@@ -2,9 +2,11 @@ package ofctrl
 
 import (
 	"errors"
+	"fmt"
+	"math/big"
 	"net"
 
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 )
 
 const (
@@ -344,7 +346,7 @@ func NewSetDscp(dscp uint8) *SetDscp {
 }
 
 func (a *SetDscp) ToOfAction() (openflow.Action, error) {
-	ipDscpField := openflow.NewIpDscpField(a.dscp)
+	ipDscpField := openflow.NewIpDscpField(a.dscp, nil)
 	return openflow.NewActionSetField(*ipDscpField), nil
 }
 
@@ -606,6 +608,65 @@ func getLearnSpecWithField(header *openflow.NXLearnSpecHeader, dstField *openflo
 	}
 }
 
+// nxFieldWidth returns the native width in bytes of a match field resolved by
+// openflow.FindFieldHeaderByName. A field resolved with hasMask carries twice
+// the native width (value bytes followed by mask bytes).
+func nxFieldWidth(field *openflow.MatchField) int {
+	width := int(field.Length)
+	if field.HasMask {
+		width /= 2
+	}
+	return width
+}
+
+// nxLoadToSetField converts a Nicira "load" (reg_load/reg_load2) into an
+// OpenFlow set_field action. OpenFlow 1.4+ (including 1.5) no longer accepts the
+// Nicira reg_load extension, so - like OVS itself - ofctrl expresses a register
+// or packet-mark load as a masked set_field.
+func nxLoadToSetField(header *openflow.MatchField, rng *openflow.NXRange, data uint64) (*openflow.MatchField, error) {
+	if header == nil || rng == nil {
+		return nil, errors.New("nx load requires a field and a range")
+	}
+	width := nxFieldWidth(header)
+	offset := int(rng.GetOfs())
+	nbits := int(rng.GetNbits())
+	if width < 1 || width > 16 || offset < 0 || nbits < 1 || nbits > 64 || offset+nbits > width*8 {
+		return nil, fmt.Errorf("invalid nx load range [%d..%d] for a %d-byte field", offset, offset+nbits-1, width)
+	}
+	// NXAST_REG_LOAD rejects an immediate with nonzero bits outside the
+	// selected range. Preserve that behavior rather than silently truncating.
+	if nbits < 64 && data>>uint(nbits) != 0 {
+		return nil, fmt.Errorf("nx load value %#x does not fit into %d bits", data, nbits)
+	}
+	// The immediate value is uint64, but its destination may be a subrange of
+	// a 128-bit ct_label. Shift at the destination width, not in a uint64.
+	mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(nbits)), big.NewInt(1))
+	mask.Lsh(mask, uint(offset))
+	value := new(big.Int).Lsh(new(big.Int).SetUint64(data), uint(offset))
+
+	field := *header
+	field.HasMask = true
+	field.Length = uint8(width * 2)
+	field.Value = &openflow.ByteArrayField{
+		Data:   value.FillBytes(make([]byte, width)),
+		Length: uint8(width),
+	}
+	field.Mask = &openflow.ByteArrayField{
+		Data:   mask.FillBytes(make([]byte, width)),
+		Length: uint8(width),
+	}
+	return &field, nil
+}
+
+// nxFieldToOxmId builds the OXM id referenced by the OpenFlow copy_field action.
+func nxFieldToOxmId(field *openflow.MatchField) openflow.OxmId {
+	return openflow.OxmId{
+		Class:  field.Class,
+		Field:  field.Field,
+		Length: uint8(nxFieldWidth(field)),
+	}
+}
+
 type NXLoadAction struct {
 	Field    *openflow.MatchField
 	Value    uint64
@@ -641,8 +702,11 @@ func NewAppendedNXLoadAction(fieldName string, data uint64, dataRange *openflow.
 }
 
 func (a *NXLoadAction) ToOfAction() (openflow.Action, error) {
-	ofsBits := a.Range.ToOfsBits()
-	return openflow.NewNXActionRegLoad(ofsBits, a.Field, a.Value), nil
+	field, err := nxLoadToSetField(a.Field, a.Range, a.Value)
+	if err != nil {
+		return nil, err
+	}
+	return openflow.NewActionSetField(*field), nil
 }
 
 func (a *NXLoadAction) GetActionType() string {
@@ -677,7 +741,10 @@ func NewNXMoveAction(bitLen, srcOffset, dstOffset uint16, srcMatchFieldName, dst
 }
 
 func (a *NXMoveAction) ToOfAction() (openflow.Action, error) {
-	return openflow.NewNXActionRegMove(a.Length, a.SrcOffset, a.DstOffset, a.SrcField, a.DstField), nil
+	// OpenFlow 1.4+ dropped the Nicira reg_move extension; use the native
+	// copy_field action instead.
+	return openflow.NewActionCopyField(a.Length, a.SrcOffset, a.DstOffset,
+		nxFieldToOxmId(a.SrcField), nxFieldToOxmId(a.DstField)), nil
 }
 
 func (a *NXMoveAction) GetActionType() string {
