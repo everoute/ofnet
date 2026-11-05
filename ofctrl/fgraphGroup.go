@@ -1,7 +1,7 @@
 package ofctrl
 
 import (
-	openflow "github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -75,8 +75,8 @@ func (self *Group) Install() error {
 	groupMod.Type = self.GroupType
 
 	// Add the bucket to groupMod
-	for _, bkt := range self.Buckets {
-		ofBkt, err := bkt.toOfBucket()
+	for idx, bkt := range self.Buckets {
+		ofBkt, err := bkt.toOfBucket(uint32(idx))
 		if err != nil {
 			log.Errorf("Invalid bucket: %+v, err is %s", *bkt, err)
 			return err
@@ -143,9 +143,13 @@ func (self *Bucket) AddAction(act Action) {
 	}
 }
 
-func (self *Bucket) toOfBucket() (*openflow.Bucket, error) {
-	ofBkt := openflow.NewBucket()
-	ofBkt.Weight = self.weight
+func (self *Bucket) toOfBucket(id uint32) (*openflow.Bucket, error) {
+	ofBkt := openflow.NewBucket(id)
+	// In OpenFlow 1.5 the bucket weight is carried as a bucket property
+	// (ofp_group_bucket_prop_weight) instead of an inline field.
+	if self.weight != 0 {
+		ofBkt.AddProperty(openflow.NewGroupBucketPropWeight(self.weight))
+	}
 	for i := range self.bucketActions {
 		act, err := self.bucketActions[i].ToOfAction()
 		if err != nil {
