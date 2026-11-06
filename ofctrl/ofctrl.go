@@ -28,14 +28,14 @@ import (
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow13"
 	"github.com/contiv/libOpenflow/util"
 	ovsdb "github.com/contiv/libovsdb"
 
 	log "github.com/sirupsen/logrus"
 )
 
-type PacketIn openflow13.PacketIn
+type PacketIn openflow.PacketIn
 type ConnectionMode int
 
 const (
@@ -74,7 +74,7 @@ type AppInterface interface {
 	PacketRcvd(sw *OFSwitch, pkt *PacketIn)
 
 	// Controller received a multi-part reply from the switch
-	MultipartReply(sw *OFSwitch, rep *openflow13.MultipartReply)
+	MultipartReply(sw *OFSwitch, rep *openflow.MultipartReply)
 }
 
 type Option func(opt *options)
@@ -295,14 +295,14 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// types are incompatable, it is possible the
 			// connection may be servered without error.
 			case *common.Hello:
-				if m.Version == openflow13.VERSION {
+				if m.Version == openflow.VERSION {
 					log.Infoln("Received Openflow 1.3 Hello message")
 					// Version negotiation is
 					// considered complete. Create
 					// new Switch and notifiy listening
 					// applications.
 					stream.Version = m.Version
-					stream.Outbound <- openflow13.NewFeaturesRequest()
+					stream.Outbound <- openflow.NewFeaturesRequest()
 				} else {
 					// Connection should be severed if controller
 					// doesn't support switch version.
@@ -312,7 +312,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 			// After a vaild FeaturesReply has been received we
 			// have all the information we need. Create a new
 			// switch object and notify applications.
-			case *openflow13.SwitchFeatures:
+			case *openflow.SwitchFeatures:
 				log.Printf("Received ofp1.3 Switch feature response: %+v", *m)
 
 				// Create a new switch and handover the stream
@@ -336,7 +336,7 @@ func (c *Controller) handleConnection(conn net.Conn) {
 
 			// An error message may indicate a version mismatch. We
 			// disconnect if an error occurs this early.
-			case *openflow13.ErrorMsg:
+			case *openflow.ErrorMsg:
 				log.Warnf("Received ofp1.3 error msg: %+v", *m)
 				stream.Shutdown <- true
 			}
@@ -357,8 +357,8 @@ func (c *Controller) handleConnection(conn net.Conn) {
 // Demux based on message version
 func (c *Controller) Parse(b []byte) (message util.Message, err error) {
 	switch b[0] {
-	case openflow13.VERSION:
-		message, err = openflow13.Parse(b)
+	case openflow.VERSION:
+		message, err = openflow.Parse(b)
 	default:
 		log.Errorf("Received unsupported openflow version: %d", b[0])
 	}
