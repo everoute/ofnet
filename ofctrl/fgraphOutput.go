@@ -18,14 +18,14 @@ package ofctrl
 // This file implements the forwarding graph API for the output element
 
 import (
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 )
 
 type Output struct {
-	outputType string                 // Output type: "drop", "toController", "port" or "reg"
-	portNo     uint32                 // Output port number
-	regField   *openflow13.MatchField // Output reg filed
-	offset     uint16                 // Output reg offset
+	outputType string               // Output type: "drop", "toController", "port" or "reg"
+	portNo     uint32               // Output port number
+	regField   *openflow.MatchField // Output reg filed
+	offset     uint16               // Output reg offset
 	// 10 + 6
 	// 10 bits for offset, and 6 bits for length - 1
 	// ofport has 16 bits, here is 15 for length
@@ -37,24 +37,24 @@ func (self *Output) Type() string {
 }
 
 // instruction set for output element
-func (self *Output) GetFlowInstr() openflow13.Instruction {
-	outputInstr := openflow13.NewInstrApplyActions()
+func (self *Output) GetFlowInstr() openflow.Instruction {
+	outputInstr := openflow.NewInstrApplyActions()
 
 	switch self.outputType {
 	case "drop":
 		return nil
 	case "toController":
-		outputAct := openflow13.NewActionOutput(openflow13.P_CONTROLLER)
+		outputAct := openflow.NewActionOutput(openflow.P_CONTROLLER)
 		// Dont buffer the packets being sent to controller
-		outputAct.MaxLen = openflow13.OFPCML_NO_BUFFER
+		outputAct.MaxLen = openflow.OFPCML_NO_BUFFER
 		outputInstr.AddAction(outputAct, false)
 	case "normal":
 		fallthrough
 	case "port":
-		outputAct := openflow13.NewActionOutput(self.portNo)
+		outputAct := openflow.NewActionOutput(self.portNo)
 		outputInstr.AddAction(outputAct, false)
 	case "reg":
-		outputAct := openflow13.NewOutputFromField(self.regField, self.offset)
+		outputAct := openflow.NewOutputFromField(self.regField, self.offset)
 		outputInstr.AddAction(outputAct, false)
 	}
 
@@ -62,22 +62,22 @@ func (self *Output) GetFlowInstr() openflow13.Instruction {
 }
 
 // Return an output action (Used by group mods)
-func (self *Output) GetOutAction() openflow13.Action {
+func (self *Output) GetOutAction() openflow.Action {
 	switch self.outputType {
 	case "drop":
 		return nil
 	case "toController":
-		outputAct := openflow13.NewActionOutput(openflow13.P_CONTROLLER)
+		outputAct := openflow.NewActionOutput(openflow.P_CONTROLLER)
 		// Dont buffer the packets being sent to controller
-		outputAct.MaxLen = openflow13.OFPCML_NO_BUFFER
+		outputAct.MaxLen = openflow.OFPCML_NO_BUFFER
 
 		return outputAct
 	case "normal":
 		fallthrough
 	case "port":
-		return openflow13.NewActionOutput(self.portNo)
+		return openflow.NewActionOutput(self.portNo)
 	case "reg":
-		return openflow13.NewOutputFromField(self.regField, self.offset)
+		return openflow.NewOutputFromField(self.regField, self.offset)
 	}
 
 	return nil

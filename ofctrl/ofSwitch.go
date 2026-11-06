@@ -17,12 +17,14 @@ package ofctrl
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/contiv/libOpenflow/common"
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 	"github.com/contiv/libOpenflow/util"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -54,6 +56,10 @@ type OFSwitch struct {
 	tlvMgr *tlvMapMgr
 
 	disableCleanGroup bool
+
+	txLock       sync.Mutex
+	txChans      map[uint32]messageSubscription
+	barrierChans map[uint32]messageSubscription
 }
 
 var switchDb cmap.ConcurrentMap[string, *OFSwitch]
@@ -139,10 +145,10 @@ func (self *OFSwitch) switchConnected() error {
 	go self.echoRequest()
 
 	// Send new feature request
-	if err := self.Send(openflow13.NewFeaturesRequest()); err != nil {
+	if err := self.Send(openflow.NewFeaturesRequest()); err != nil {
 		return err
 	}
-	if err := self.Send(openflow13.NewEchoRequest()); err != nil {
+	if err := self.Send(openflow.NewEchoRequest()); err != nil {
 		return err
 	}
 
@@ -168,7 +174,7 @@ func (self *OFSwitch) echoRequest() {
 	for {
 		select {
 		case <-timer.C:
-			self.Send(openflow13.NewEchoRequest())
+			self.Send(openflow.NewEchoRequest())
 		case <-self.ctx.Done():
 			return
 		}
@@ -200,78 +206,182 @@ func (self *OFSwitch) handleMessages(dpid net.HardwareAddr, msg util.Message) {
 	switch t := msg.(type) {
 	case *common.Header:
 		switch t.Header().Type {
-		case openflow13.Type_Hello:
+		case openflow.Type_Hello:
 			// Send Hello response
-			h, err := common.NewHello(4)
+			h, err := openflow.NewHello()
 			if err != nil {
 				log.Errorf("Error creating hello message")
 			}
 			self.Send(h)
 
-		case openflow13.Type_EchoRequest:
+		case openflow.Type_EchoRequest:
 			// Send echo reply
-			res := openflow13.NewEchoReply()
+			res := openflow.NewEchoReply()
 			self.Send(res)
 
-		case openflow13.Type_EchoReply:
+		case openflow.Type_EchoReply:
 
-		case openflow13.Type_FeaturesRequest:
+		case openflow.Type_FeaturesRequest:
 
-		case openflow13.Type_GetConfigRequest:
+		case openflow.Type_GetConfigRequest:
 
-		case openflow13.Type_BarrierRequest:
+		case openflow.Type_BarrierRequest:
 
-		case openflow13.Type_BarrierReply:
+		case openflow.Type_BarrierReply:
+			self.publishBarrier(t.Xid, MessageResult{
+				succeed: true,
+				xID:     t.Xid,
+				msgType: BarrierReply,
+			})
 
 		}
-	case *openflow13.ErrorMsg:
-		log.Errorf("Received OpenFlow1.3 error: %s on msg %s, origin data: %s",
+	case *openflow.ErrorMsg:
+		log.Errorf("Received OpenFlow1.5 error: %s on msg %s, origin data: %s",
 			GetErrorMessage(t.Type, t.Code, 0), GetErrorMessageType(t.Data), t.Data.String())
-	case *openflow13.VendorHeader:
+		self.handleBundleError(t)
+	case *openflow.VendorHeader:
 		switch t.ExperimenterType {
-		case openflow13.Type_TlvTableReply:
-			reply := t.VendorData.(*openflow13.TLVTableReply)
+		case openflow.Type_TlvTableReply:
+			reply := t.VendorData.(*openflow.TLVTableReply)
 			status := TLVTableStatus(*reply)
 			self.tlvMgr.TLVMapReplyRcvd(self, &status)
 		}
+	case *openflow.BundleCtrl:
+		self.publishMessage(t.BundleId, MessageResult{
+			succeed: true,
+			xID:     t.Header.Xid,
+			msgType: BundleControlResult,
+		})
 
-	case *openflow13.SwitchFeatures:
+	case *openflow.SwitchFeatures:
 		switch t.Header.Type {
-		case openflow13.Type_FeaturesReply:
-			swConfig := openflow13.NewSetConfig()
+		case openflow.Type_FeaturesReply:
+			swConfig := openflow.NewSetConfig()
 			swConfig.MissSendLen = 128
 			self.Send(swConfig)
-			self.Send(openflow13.NewSetControllerID(self.ControllerID))
+			self.Send(openflow.NewSetControllerID(self.ControllerID))
 		}
 
-	case *openflow13.SwitchConfig:
+	case *openflow.SwitchConfig:
 		switch t.Header.Type {
-		case openflow13.Type_GetConfigReply:
+		case openflow.Type_GetConfigReply:
 
-		case openflow13.Type_SetConfig:
+		case openflow.Type_SetConfig:
 
 		}
-	case *openflow13.PacketIn:
+	case *openflow.PacketIn:
 		log.Debugf("Received packet(ofctrl): %+v", t)
 		// send packet rcvd callback
 		self.app.PacketRcvd(self, (*PacketIn)(t))
 
-	case *openflow13.FlowRemoved:
+	case *openflow.FlowRemoved:
 
-	case *openflow13.PortStatus:
+	case *openflow.PortStatus:
 		// FIXME: This needs to propagated to the app.
-	case *openflow13.PacketOut:
+	case *openflow.PacketOut:
 
-	case *openflow13.FlowMod:
+	case *openflow.FlowMod:
 
-	case *openflow13.PortMod:
+	case *openflow.PortMod:
 
-	case *openflow13.MultipartRequest:
+	case *openflow.MultipartRequest:
 
-	case *openflow13.MultipartReply:
+	case *openflow.MultipartReply:
 		log.Debugf("Received MultipartReply")
 		// send packet rcvd callback
-		self.app.MultipartReply(self, (*openflow13.MultipartReply)(t))
+		self.app.MultipartReply(self, (*openflow.MultipartReply)(t))
 
 	}
+}
+
+type messageSubscription struct {
+	replyCh chan MessageResult
+	done    <-chan struct{}
+}
+
+func (self *OFSwitch) subscribeMessage(bundleID uint32, subscription messageSubscription) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	if self.txChans == nil {
+		self.txChans = make(map[uint32]messageSubscription)
+	}
+	self.txChans[bundleID] = subscription
+}
+
+func (self *OFSwitch) unsubscribeMessage(bundleID uint32) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	delete(self.txChans, bundleID)
+}
+
+func (self *OFSwitch) publishMessage(bundleID uint32, result MessageResult) {
+	self.txLock.Lock()
+	subscription, found := self.txChans[bundleID]
+	self.txLock.Unlock()
+	if !found {
+		return
+	}
+	select {
+	case <-subscription.done:
+		return
+	case subscription.replyCh <- result:
+	case <-time.After(messageTimeout):
+		log.Warnf("Bundle %d reply was dropped because the transaction did not accept it in time", bundleID)
+	}
+}
+
+func (self *OFSwitch) subscribeBarrier(xid uint32, subscription messageSubscription) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	if self.barrierChans == nil {
+		self.barrierChans = make(map[uint32]messageSubscription)
+	}
+	self.barrierChans[xid] = subscription
+}
+
+func (self *OFSwitch) unsubscribeBarrier(xid uint32) {
+	self.txLock.Lock()
+	defer self.txLock.Unlock()
+	delete(self.barrierChans, xid)
+}
+
+func (self *OFSwitch) publishBarrier(xid uint32, result MessageResult) {
+	self.txLock.Lock()
+	subscription, found := self.barrierChans[xid]
+	self.txLock.Unlock()
+	if !found {
+		return
+	}
+	select {
+	case <-subscription.done:
+		return
+	case subscription.replyCh <- result:
+	case <-time.After(messageTimeout):
+		log.Warnf("Barrier %d reply was dropped because the transaction did not accept it in time", xid)
+	}
+}
+
+// handleBundleError routes an error reply to the bundle that owns the failed
+// request. The error data carries the offending request, whose bundle ID
+// follows the common header.
+func (self *OFSwitch) handleBundleError(msg *openflow.ErrorMsg) {
+	data := msg.Data.Bytes()
+	if len(data) < 12 {
+		return
+	}
+	result := MessageResult{
+		succeed: false,
+		errType: msg.Type,
+		errCode: msg.Code,
+		xID:     msg.Xid,
+	}
+	switch data[1] {
+	case openflow.Type_BundleControl:
+		result.msgType = BundleControlResult
+	case openflow.Type_BundleAddMessage:
+		result.msgType = BundleAddError
+	default:
+		return
+	}
+	self.publishMessage(binary.BigEndian.Uint32(data[8:12]), result)
 }

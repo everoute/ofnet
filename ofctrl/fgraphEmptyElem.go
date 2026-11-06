@@ -1,7 +1,7 @@
 package ofctrl
 
 import (
-	"github.com/contiv/libOpenflow/openflow13"
+	openflow "github.com/contiv/libOpenflow/openflow15"
 )
 
 type EmptyElem struct {
@@ -11,8 +11,8 @@ func (e *EmptyElem) Type() string {
 	return "empty"
 }
 
-func (e *EmptyElem) GetFlowInstr() openflow13.Instruction {
-	instr := openflow13.NewInstrApplyActions()
+func (e *EmptyElem) GetFlowInstr() openflow.Instruction {
+	instr := openflow.NewInstrApplyActions()
 	return instr
 }
 
